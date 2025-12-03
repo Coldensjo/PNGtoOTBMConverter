@@ -10,6 +10,7 @@ class PNGToOTBMApp {
 		this.image = null;
 		this.imageData = null;
 		this.colorMappings = new Map(); // color hex -> { color, tileId, count }
+		this.transparentPixelCount = 0; // Count of transparent pixels
 		
 		// DOM Elements
 		this.fileInput = document.getElementById('fileInput');
@@ -24,6 +25,7 @@ class PNGToOTBMApp {
 		this.generateBtn = document.getElementById('generateBtn');
 		this.status = document.getElementById('status');
 		this.clientVersion = document.getElementById('clientVersion');
+		this.transparentTileId = document.getElementById('transparentTileId');
 		this.zLevel = document.getElementById('zLevel');
 		this.offsetX = document.getElementById('offsetX');
 		this.offsetY = document.getElementById('offsetY');
@@ -256,6 +258,7 @@ class PNGToOTBMApp {
 		// Count colors
 		const colorCounts = new Map();
 		const MAX_COLORS = 256; // Maximum number of unique colors
+		let transparentCount = 0;
 		
 		for (let i = 0; i < pixels.length; i += 4) {
 			const r = pixels[i];
@@ -263,8 +266,11 @@ class PNGToOTBMApp {
 			const b = pixels[i + 2];
 			const a = pixels[i + 3];
 			
-			// Skip fully transparent pixels
-			if (a < 128) continue;
+			// Count transparent pixels
+			if (a < 128) {
+				transparentCount++;
+				continue;
+			}
 			
 			const hex = this._rgbToHex(r, g, b);
 			colorCounts.set(hex, (colorCounts.get(hex) || 0) + 1);
@@ -306,14 +312,21 @@ class PNGToOTBMApp {
 			});
 		}
 		
+		// Store transparent pixel count
+		this.transparentPixelCount = transparentCount;
+		
 		// Build UI
 		this._buildColorList();
 		
-		// Update count
-		this.colorCount.textContent = `${this.colorMappings.size} colors`;
+		// Update count (include transparent pixels if any)
+		let countText = `${this.colorMappings.size} colors`;
+		if (transparentCount > 0) {
+			countText += `, ${transparentCount.toLocaleString()} transparent`;
+		}
+		this.colorCount.textContent = countText;
 		
 		// Enable generate button
-		if (this.colorMappings.size > 0) {
+		if (this.colorMappings.size > 0 || transparentCount > 0) {
 			this.generateBtn.disabled = false;
 		}
 		
@@ -405,12 +418,20 @@ class PNGToOTBMApp {
 		
 		// Check for ID 0 warnings
 		const zeroIds = [...this.colorMappings.values()].filter(m => m.tileId === 0);
-		if (zeroIds.length > 0) {
-			const proceed = confirm(
-				`${zeroIds.length} color(s) have ID 0.\n` +
-				`These pixels will be skipped (no tile placed).\n\n` +
-				`Continue anyway?`
-			);
+		const transparentId = parseInt(this.transparentTileId.value) || 0;
+		const hasTransparentPixels = this.transparentPixelCount > 0;
+		
+		if (zeroIds.length > 0 || (hasTransparentPixels && transparentId === 0)) {
+			let warningMsg = '';
+			if (zeroIds.length > 0) {
+				warningMsg += `${zeroIds.length} color(s) have ID 0.\nThese pixels will be skipped (no tile placed).\n\n`;
+			}
+			if (hasTransparentPixels && transparentId === 0) {
+				warningMsg += `${this.transparentPixelCount.toLocaleString()} transparent pixel(s) detected.\nTransparent Tile ID is 0, so these will be skipped.\n\n`;
+			}
+			warningMsg += 'Continue anyway?';
+			
+			const proceed = confirm(warningMsg);
 			if (!proceed) return;
 		}
 		
@@ -458,6 +479,7 @@ class PNGToOTBMApp {
 		// Process each pixel
 		const pixels = this.imageData.data;
 		let tileCount = 0;
+		let transparentTileCount = 0;
 		
 		for (let y = 0; y < height; y++) {
 			for (let x = 0; x < width; x++) {
@@ -467,8 +489,15 @@ class PNGToOTBMApp {
 				const b = pixels[i + 2];
 				const a = pixels[i + 3];
 				
-				// Skip transparent pixels
-				if (a < 128) continue;
+				// Handle transparent pixels
+				if (a < 128) {
+					if (transparentId > 0) {
+						writer.addTile(x + offX, y + offY, z, transparentId);
+						transparentTileCount++;
+						tileCount++;
+					}
+					continue;
+				}
 				
 				const hex = this._rgbToHex(r, g, b);
 				const tileId = colorToTile.get(hex);
@@ -485,10 +514,12 @@ class PNGToOTBMApp {
 			const clientName = clientConfig.name.replace(/[^a-zA-Z0-9]/g, '_');
 			const filename = `converted_map_${clientName}.otbm`;
 			const fileSize = writer.download(filename);
-			this._updateStatus(
-				`✓ Downloaded: ${filename} (${fileSize.toLocaleString()} bytes, ${tileCount.toLocaleString()} tiles, Client: ${clientConfig.name})`,
-				'success'
-			);
+			let statusMsg = `✓ Downloaded: ${filename} (${fileSize.toLocaleString()} bytes, ${tileCount.toLocaleString()} tiles`;
+			if (transparentTileCount > 0) {
+				statusMsg += `, ${transparentTileCount.toLocaleString()} transparent`;
+			}
+			statusMsg += `, Client: ${clientConfig.name})`;
+			this._updateStatus(statusMsg, 'success');
 		} catch (error) {
 			this._updateStatus(`Error: ${error.message}`, 'error');
 		}
