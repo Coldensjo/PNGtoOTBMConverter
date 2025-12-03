@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>PNG → OTBM Converter</title>
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+	<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+	<div class="app">
+		<!-- Header -->
+		<header class="header">
+			<div class="header-content">
+				<h1 class="logo">
+					PNG → OTBM
+				</h1>
+			</div>
+		</header>
+
+		<!-- Main Content -->
+		<main class="main">
+			<!-- Left Panel - Preview -->
+			<section class="panel preview-panel">
+				<div class="panel-header">
+					<h2>IMAGE PREVIEW</h2>
+					<span class="image-info" id="imageInfo">No image loaded</span>
+				</div>
+				
+				<div class="preview-container" id="previewContainer">
+					<div class="preview-placeholder" id="previewPlaceholder">
+						<div class="placeholder-icon">🖼️</div>
+						<p>Drop a PNG file here</p>
+						<p class="placeholder-sub">or click the button below</p>
+					</div>
+					<canvas id="previewCanvas"></canvas>
+				</div>
+
+				<div class="import-section">
+					<input type="file" id="fileInput" accept="image/*" hidden>
+					<button class="btn btn-primary" id="importBtn">
+						IMPORT PNG
+					</button>
+				</div>
+			</section>
+
+			<!-- Right Panel - Controls -->
+			<section class="panel control-panel">
+				<div class="panel-header">
+					<h2>COLOR MAPPINGS</h2>
+					<span class="color-count" id="colorCount">0 colors</span>
+				</div>
+
+				<p class="instructions">
+					Assign an ID to each color.<br>
+					Each color becomes an item.
+				</p>
+
+				<div class="color-list-container">
+					<div class="color-list" id="colorList">
+						<div class="empty-state" id="emptyState">
+							<p>Import an image to<br>detect colors</p>
+						</div>
+					</div>
+				</div>
+
+				<div class="settings-section">
+					<div class="setting-row">
+						<label for="clientVersion">Client Version:</label>
+						<select id="clientVersion" class="input-select">
+							<!-- Options will be populated by JavaScript -->
+						</select>
+					</div>
+					
+					<div class="setting-row">
+						<label for="zLevel">Z-Level (Floor):</label>
+						<input type="number" id="zLevel" value="7" min="0" max="15" class="input-small">
+					</div>
+					
+					<div class="setting-row">
+						<label for="offsetX">Offset X:</label>
+						<input type="number" id="offsetX" value="0" min="0" class="input-small">
+					</div>
+					
+					<div class="setting-row">
+						<label for="offsetY">Offset Y:</label>
+						<input type="number" id="offsetY" value="0" min="0" class="input-small">
+					</div>
+				</div>
+
+				<button class="btn btn-success" id="generateBtn" disabled>
+					GENERATE
+				</button>
+
+				<div class="status" id="status"></div>
+			</section>
+		</main>
+	</div>
+
+	<script src="clients-data.js"></script>
+	<script src="otbm-writer.js"></script>
+	<script src="app.js"></script>
+</body>
+</html>
