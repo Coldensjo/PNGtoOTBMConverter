@@ -255,8 +255,8 @@ class PNGToOTBMApp {
 	 * @returns {Object} { valid: boolean, error: string }
 	 */
 	_checkImageComplexity(width, height) {
-		const MAX_DIMENSION = 2048; // Maximum width or height
-		const MAX_TOTAL_PIXELS = 4194304; // 2048 × 2048 = 4,194,304 pixels
+		const MAX_DIMENSION = 4500; // Maximum width or height
+		const MAX_TOTAL_PIXELS = 13500000; // 4500 × 3000 = 13,500,000 pixels - this was tested and it works fine
 		const totalPixels = width * height;
 		
 		// Check dimensions
