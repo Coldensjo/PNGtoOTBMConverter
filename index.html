@@ -29,6 +29,21 @@
 					<span class="image-info" id="imageInfo">No image loaded</span>
 				</div>
 				
+				<div class="preview-controls">
+					<div class="zoom-controls">
+						<button class="btn btn-small btn-zoom" id="zoomOutBtn" title="Zoom out" aria-label="Zoom out">
+							−
+						</button>
+						<span class="zoom-level" id="zoomLevel">100%</span>
+						<button class="btn btn-small btn-zoom" id="zoomInBtn" title="Zoom in" aria-label="Zoom in">
+							+
+						</button>
+						<button class="btn btn-small btn-zoom" id="zoomFitBtn" title="Fit to container" aria-label="Fit to container">
+							Fit
+						</button>
+					</div>
+				</div>
+				
 				<div class="preview-container" id="previewContainer">
 					<div class="preview-placeholder" id="previewPlaceholder">
 						<div class="placeholder-icon">🖼️</div>
@@ -36,71 +51,110 @@
 						<p class="placeholder-sub">or click the button below</p>
 					</div>
 					<canvas id="previewCanvas"></canvas>
+					<div class="pixel-info" id="pixelInfo"></div>
 				</div>
 
 				<div class="import-section">
-					<input type="file" id="fileInput" accept="image/*" hidden>
-					<button class="btn btn-primary" id="importBtn">
+					<input type="file" id="fileInput" accept="image/*" hidden aria-label="Select PNG image file">
+					<button class="btn btn-primary" id="importBtn" aria-label="Import PNG image">
 						IMPORT PNG
 					</button>
 				</div>
 			</section>
 
-			<!-- Right Panel - Controls -->
-			<section class="panel control-panel">
-				<div class="panel-header">
-					<h2>COLOR MAPPINGS</h2>
-					<span class="color-count" id="colorCount">0 colors</span>
-				</div>
+			<!-- Right Panels - Controls -->
+			<div class="right-panels">
+				<!-- Color Mappings Panel -->
+				<section class="panel control-panel">
+					<div class="panel-header">
+						<h2>COLOR MAPPINGS</h2>
+						<span class="color-count" id="colorCount">0 colors</span>
+					</div>
 
-				<p class="instructions">
-					Assign an ID to each color.<br>
-					Each color becomes an item.
-				</p>
+					<p class="instructions">
+						Assign an ID to each color.<br>
+						Each color becomes an item.
+					</p>
 
-				<div class="color-list-container">
-					<div class="color-list" id="colorList">
-						<div class="empty-state" id="emptyState">
-							<p>Import an image to<br>detect colors</p>
+					<div class="color-toolbar">
+						<input type="text" id="colorSearch" class="color-search" placeholder="Search colors..." autocomplete="off" aria-label="Search colors by hex, RGB, or ID">
+						<div class="toolbar-buttons">
+							<button class="btn btn-small" id="exportMappingsBtn" title="Export color mappings to JSON" aria-label="Export color mappings">
+								EXPORT
+							</button>
+							<button class="btn btn-small" id="importMappingsBtn" title="Import color mappings from JSON" aria-label="Import color mappings">
+								IMPORT
+							</button>
 						</div>
 					</div>
-				</div>
 
-				<div class="settings-section">
+					<div class="color-list-container">
+						<div class="color-list" id="colorList">
+							<div class="empty-state" id="emptyState">
+								<p>Import an image to<br>detect colors</p>
+							</div>
+						</div>
+					</div>
+
+					<div class="settings-section">
 					<div class="setting-row">
 						<label for="clientVersion">Client Version:</label>
-						<select id="clientVersion" class="input-select">
+						<select id="clientVersion" class="input-select" aria-label="Select Tibia client version">
 							<!-- Options will be populated by JavaScript -->
 						</select>
 					</div>
 					
 					<div class="setting-row">
 						<label for="transparentTileId">Transparent Tile ID:</label>
-						<input type="number" id="transparentTileId" value="0" min="0" max="65535" class="input-small" placeholder="0 = skip">
+						<input type="number" id="transparentTileId" value="0" min="0" max="65535" class="input-small" placeholder="0 = skip" aria-label="Tile ID for transparent pixels">
 					</div>
 					
 					<div class="setting-row">
 						<label for="zLevel">Z-Level (Floor):</label>
-						<input type="number" id="zLevel" value="7" min="0" max="15" class="input-small">
+						<input type="number" id="zLevel" value="7" min="0" max="15" class="input-small" aria-label="Floor level (0-15)">
 					</div>
 					
 					<div class="setting-row">
 						<label for="offsetX">Offset X:</label>
-						<input type="number" id="offsetX" value="0" min="0" class="input-small">
+						<input type="number" id="offsetX" value="0" min="0" class="input-small" aria-label="X coordinate offset">
 					</div>
 					
 					<div class="setting-row">
 						<label for="offsetY">Offset Y:</label>
-						<input type="number" id="offsetY" value="0" min="0" class="input-small">
+						<input type="number" id="offsetY" value="0" min="0" class="input-small" aria-label="Y coordinate offset">
 					</div>
 				</div>
 
-				<button class="btn btn-success" id="generateBtn" disabled>
+				<button class="btn btn-success" id="generateBtn" disabled aria-label="Generate OTBM file">
 					GENERATE
 				</button>
 
-				<div class="status" id="status"></div>
-			</section>
+				<div class="progress-container" id="progressContainer" style="display: none;">
+					<div class="progress-bar">
+						<div class="progress-fill" id="progressFill"></div>
+					</div>
+					<div class="progress-text" id="progressText">0%</div>
+				</div>
+
+					<div class="status" id="status"></div>
+				</section>
+
+				<!-- Favorites Panel -->
+				<section class="panel favorites-panel">
+					<div class="panel-header">
+						<h2>FAVORITES </h2>
+						<button class="btn btn-small btn-icon-only" id="addFavoriteBtn" title="Add favorite" aria-label="Add favorite">
+							+
+						</button>
+					</div>
+
+					<div class="favorites-list" id="favoritesList">
+						<div class="empty-state" id="favoritesEmptyState">
+							<p>No favorites yet</p>
+						</div>
+					</div>
+				</section>
+			</div>
 		</main>
 	</div>
 
