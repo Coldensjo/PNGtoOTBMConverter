@@ -14,7 +14,7 @@ class PNGToOTBMApp {
 		this.filteredColors = null; // Filtered color list for search
 		this.zoomLevel = 1.0; // Current zoom level (1.0 = 100%)
 		this.minZoom = 0.1; // Minimum zoom (10%)
-		this.maxZoom = 4.0; // Maximum zoom (400%)
+		this.maxZoom = 20.0; // Maximum zoom (2000%)
 		this.favorites = []; // Array of { id, name } favorite items
 		
 		// DOM Elements
@@ -207,6 +207,8 @@ class PNGToOTBMApp {
 					this.image = null;
 					this.imageData = null;
 					this.colorMappings.clear();
+					this.filteredColors = null;
+					this.colorSearch.value = '';
 					this._buildColorList();
 					this.generateBtn.disabled = true;
 					// Reset preview
@@ -216,17 +218,17 @@ class PNGToOTBMApp {
 					return;
 				}
 				
-				this.image = img;
-				// Calculate initial zoom to fit container
-				const containerRect = this.previewContainer.getBoundingClientRect();
-				const maxWidth = containerRect.width - 32;
-				const maxHeight = containerRect.height - 32;
-				const fitScale = Math.min(
-					maxWidth / img.width,
-					maxHeight / img.height,
-					1.0 // Don't zoom in beyond 100% initially
-				);
-				this.zoomLevel = fitScale;
+			this.image = img;
+			// Calculate initial zoom to fit container
+			const containerRect = this.previewContainer.getBoundingClientRect();
+			const maxWidth = containerRect.width - 32;
+			const maxHeight = containerRect.height - 32;
+			const fitScale = Math.min(
+				maxWidth / img.width,
+				maxHeight / img.height,
+				1.0 // Don't zoom in beyond 100% initially
+			);
+			this.zoomLevel = Math.max(fitScale, this.minZoom);
 				this._updatePreview();
 				// Analyze colors - this will show error if too complex
 				const colorAnalysisResult = this._analyzeColors();
@@ -341,7 +343,7 @@ class PNGToOTBMApp {
 			maxWidth / this.image.width,
 			maxHeight / this.image.height
 		);
-		this.zoomLevel = Math.min(fitScale, 1.0); // Don't zoom in beyond 100% when fitting
+		this.zoomLevel = Math.max(Math.min(fitScale, 1.0), this.minZoom); // Don't zoom in beyond 100% when fitting, but ensure at least minZoom
 		this._updatePreview();
 	}
 	
@@ -368,6 +370,10 @@ class PNGToOTBMApp {
 		const y = e.clientY - rect.top;
 		
 		// Convert canvas coordinates to image coordinates
+		// Safety check: ensure zoomLevel is valid
+		if (!this.zoomLevel || this.zoomLevel <= 0 || isNaN(this.zoomLevel)) {
+			this.zoomLevel = 1.0; // Reset to default
+		}
 		const imageX = Math.floor(x / this.zoomLevel);
 		const imageY = Math.floor(y / this.zoomLevel);
 		
@@ -390,7 +396,7 @@ class PNGToOTBMApp {
 		
 		if (a < 128) {
 			// Transparent pixel
-			const transparentId = parseInt(this.transparentTileId.value) || 0;
+			const transparentId = Math.max(0, Math.min(65535, parseInt(this.transparentTileId.value) || 0));
 			infoText = `Transparent`;
 			if (transparentId > 0) {
 				infoText += `<br>ID: ${transparentId}`;
@@ -450,6 +456,10 @@ class PNGToOTBMApp {
 		const y = e.clientY - rect.top;
 		
 		// Convert canvas coordinates to image coordinates
+		// Safety check: ensure zoomLevel is valid
+		if (!this.zoomLevel || this.zoomLevel <= 0 || isNaN(this.zoomLevel)) {
+			this.zoomLevel = 1.0; // Reset to default
+		}
 		const imageX = Math.floor(x / this.zoomLevel);
 		const imageY = Math.floor(y / this.zoomLevel);
 		
@@ -566,6 +576,8 @@ class PNGToOTBMApp {
 				this.image = null;
 				this.imageData = null;
 				this.colorMappings.clear();
+				this.filteredColors = null;
+				this.colorSearch.value = '';
 				this._buildColorList();
 				this.generateBtn.disabled = true;
 				// Reset preview
@@ -586,12 +598,21 @@ class PNGToOTBMApp {
 		
 		// Store mappings
 		this.colorMappings.clear();
+		// Clear filtered colors when loading new image
+		this.filteredColors = null;
+		this.colorSearch.value = '';
+		
+		// Load saved color mappings to restore previously assigned tile IDs
+		const savedMappings = this._loadColorMappings();
+		
 		for (const [hex, count] of sortedColors) {
 			const rgb = this._hexToRgb(hex);
+			// Restore saved tile ID if available, otherwise default to 0
+			const savedTileId = savedMappings.get(hex);
 			this.colorMappings.set(hex, {
 				hex,
 				rgb,
-				tileId: 0,
+				tileId: savedTileId !== undefined ? savedTileId : 0,
 				count
 			});
 		}
@@ -688,13 +709,20 @@ class PNGToOTBMApp {
 			const value = parseInt(e.target.value) || 0;
 			mapping.tileId = Math.max(0, Math.min(65535, value));
 			e.target.value = mapping.tileId;
-			this._saveSettings(); // Save when ID changes
+			this._saveColorMappings(); // Save color mapping when ID changes
 		});
 		
+		// Use debounced save for input events to avoid excessive localStorage writes
+		let inputTimeout = null;
 		input.addEventListener('input', (e) => {
 			const value = parseInt(e.target.value);
 			if (!isNaN(value)) {
 				mapping.tileId = Math.max(0, Math.min(65535, value));
+				// Debounce localStorage save (save after 500ms of no input)
+				clearTimeout(inputTimeout);
+				inputTimeout = setTimeout(() => {
+					this._saveColorMappings();
+				}, 500);
 			}
 		});
 		
@@ -720,6 +748,7 @@ class PNGToOTBMApp {
 				if (favorite) {
 					mapping.tileId = favorite.tileId;
 					input.value = favorite.tileId;
+					this._saveColorMappings(); // Save color mapping when ID is assigned via favorite
 					this._updateStatus(`Assigned "${favorite.name}" (ID: ${favorite.tileId}) to color`, 'success');
 				}
 			}
@@ -749,7 +778,7 @@ class PNGToOTBMApp {
 			
 			// Check for ID 0 warnings
 			const zeroIds = [...this.colorMappings.values()].filter(m => m.tileId === 0);
-			const transparentId = parseInt(this.transparentTileId.value) || 0;
+			const transparentId = Math.max(0, Math.min(65535, parseInt(this.transparentTileId.value) || 0));
 			const hasTransparentPixels = this.transparentPixelCount > 0;
 			
 			if (zeroIds.length > 0 || (hasTransparentPixels && transparentId === 0)) {
@@ -932,7 +961,10 @@ class PNGToOTBMApp {
 			if (settings) {
 				const parsed = JSON.parse(settings);
 				if (parsed.clientVersion) this.clientVersion.value = parsed.clientVersion;
-				if (parsed.transparentTileId !== undefined) this.transparentTileId.value = parsed.transparentTileId;
+				if (parsed.transparentTileId !== undefined) {
+					const validatedId = Math.max(0, Math.min(65535, parseInt(parsed.transparentTileId) || 0));
+					this.transparentTileId.value = validatedId;
+				}
 				if (parsed.zLevel !== undefined) this.zLevel.value = parsed.zLevel;
 				if (parsed.offsetX !== undefined) this.offsetX.value = parsed.offsetX;
 				if (parsed.offsetY !== undefined) this.offsetY.value = parsed.offsetY;
@@ -958,6 +990,46 @@ class PNGToOTBMApp {
 		} catch (error) {
 			console.warn('Failed to save settings:', error);
 		}
+	}
+	
+	/**
+	 * Save color mappings to localStorage
+	 * Stores hex color -> tileId mappings for persistence across sessions
+	 */
+	_saveColorMappings() {
+		try {
+			const mappings = {};
+			for (const [hex, mapping] of this.colorMappings) {
+				// Only save non-zero tile IDs to avoid cluttering storage
+				if (mapping.tileId > 0) {
+					mappings[hex] = mapping.tileId;
+				}
+			}
+			localStorage.setItem('pngToOtbmColorMappings', JSON.stringify(mappings));
+		} catch (error) {
+			console.warn('Failed to save color mappings:', error);
+		}
+	}
+	
+	/**
+	 * Load color mappings from localStorage
+	 * Returns a Map of hex color -> tileId
+	 */
+	_loadColorMappings() {
+		try {
+			const saved = localStorage.getItem('pngToOtbmColorMappings');
+			if (saved) {
+				const parsed = JSON.parse(saved);
+				const mappings = new Map();
+				for (const [hex, tileId] of Object.entries(parsed)) {
+					mappings.set(hex, tileId);
+				}
+				return mappings;
+			}
+		} catch (error) {
+			console.warn('Failed to load color mappings:', error);
+		}
+		return new Map();
 	}
 	
 	/**
@@ -1059,8 +1131,16 @@ class PNGToOTBMApp {
 					// Import colors (only if they exist in current mappings)
 					let imported = 0;
 					for (const colorData of importData.colors) {
+						// Validate colorData structure
+						if (!colorData || typeof colorData.hex !== 'string') {
+							continue; // Skip invalid entries
+						}
 						if (this.colorMappings.has(colorData.hex)) {
-							this.colorMappings.get(colorData.hex).tileId = colorData.tileId || 0;
+							// Handle explicit 0 vs undefined/null
+							const tileId = (colorData.tileId !== undefined && colorData.tileId !== null) 
+								? colorData.tileId 
+								: 0;
+							this.colorMappings.get(colorData.hex).tileId = Math.max(0, Math.min(65535, tileId));
 							imported++;
 						}
 					}
@@ -1068,10 +1148,17 @@ class PNGToOTBMApp {
 					// Import settings if available
 					if (importData.settings) {
 						if (importData.settings.clientVersion) {
-							this.clientVersion.value = importData.settings.clientVersion;
+							// Validate client version exists in available clients
+							const validClient = CLIENT_DATA.clients.find(c => c.name === importData.settings.clientVersion);
+							if (validClient) {
+								this.clientVersion.value = importData.settings.clientVersion;
+							} else {
+								console.warn(`Invalid client version in import: ${importData.settings.clientVersion}`);
+							}
 						}
 						if (importData.settings.transparentTileId !== undefined) {
-							this.transparentTileId.value = importData.settings.transparentTileId;
+							const validatedId = Math.max(0, Math.min(65535, parseInt(importData.settings.transparentTileId) || 0));
+							this.transparentTileId.value = validatedId;
 						}
 						if (importData.settings.zLevel !== undefined) {
 							this.zLevel.value = importData.settings.zLevel;
@@ -1084,6 +1171,9 @@ class PNGToOTBMApp {
 						}
 						this._saveSettings();
 					}
+					
+					// Save imported color mappings to localStorage
+					this._saveColorMappings();
 					
 					// Rebuild list
 					this._buildColorList();
@@ -1103,6 +1193,13 @@ class PNGToOTBMApp {
 	 * Handle keyboard shortcuts
 	 */
 	_handleKeyboard(e) {
+		// Escape: Clear search (check before early return so it works when input has focus)
+		if (e.key === 'Escape' && document.activeElement === this.colorSearch) {
+			this.colorSearch.value = '';
+			this._filterColors();
+			return;
+		}
+		
 		// Don't trigger shortcuts when typing in inputs
 		if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') {
 			return;
@@ -1126,12 +1223,6 @@ class PNGToOTBMApp {
 		if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
 			e.preventDefault();
 			this.colorSearch.focus();
-		}
-		
-		// Escape: Clear search
-		if (e.key === 'Escape' && document.activeElement === this.colorSearch) {
-			this.colorSearch.value = '';
-			this._filterColors();
 		}
 	}
 	
@@ -1178,9 +1269,9 @@ class PNGToOTBMApp {
 			return;
 		}
 		
-		// Create favorite with unique ID
+		// Create favorite with unique ID (use timestamp + random to avoid collisions)
 		const favorite = {
-			id: Date.now().toString(), // Simple unique ID
+			id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, // Unique ID
 			name: name.trim(),
 			tileId: tileId
 		};

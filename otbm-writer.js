@@ -201,6 +201,12 @@ class OTBMWriter {
 		// Write tile offset from area base
 		const xOffset = tile.x - baseX;
 		const yOffset = tile.y - baseY;
+		
+		// Validate offsets are in valid range (0-255)
+		if (xOffset < 0 || xOffset > 255 || yOffset < 0 || yOffset > 255) {
+			throw new Error(`Invalid tile offset: x=${xOffset}, y=${yOffset} (tile at ${tile.x},${tile.y}, area base ${baseX},${baseY})`);
+		}
+		
 		this._writeEscapedByte(xOffset);
 		this._writeEscapedByte(yOffset);
 		
