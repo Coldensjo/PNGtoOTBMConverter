@@ -1826,32 +1826,61 @@ class PNGToOTBMApp {
 	}
 	
 	/**
-	 * Show dialog to add a new favorite
+	 * Prompt for favorite name and tile ID
+	 * @param {{ name?: string, tileId?: number }} [defaults]
+	 * @returns {{ name: string, tileId: number } | null}
 	 */
-	_showAddFavoriteDialog() {
-		const name = prompt('Enter favorite name:');
-		if (!name || !name.trim()) return;
+	_promptFavoriteFields(defaults = {}) {
+		const name = prompt('Enter favorite name:', defaults.name ?? '');
+		if (!name || !name.trim()) return null;
 		
-		const idStr = prompt('Enter tile ID:');
-		if (!idStr) return;
+		const defaultId = defaults.tileId !== undefined ? String(defaults.tileId) : '';
+		const idStr = prompt('Enter tile ID:', defaultId);
+		if (!idStr) return null;
 		
 		const tileId = parseInt(idStr);
 		if (isNaN(tileId) || tileId < 0 || tileId > 65535) {
 			this._updateStatus('Invalid tile ID. Must be between 0 and 65535', 'error');
-			return;
+			return null;
 		}
 		
-		// Create favorite with unique ID (use timestamp + random to avoid collisions)
+		return { name: name.trim(), tileId };
+	}
+	
+	/**
+	 * Show dialog to add a new favorite
+	 */
+	_showAddFavoriteDialog() {
+		const fields = this._promptFavoriteFields();
+		if (!fields) return;
+		
 		const favorite = {
-			id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, // Unique ID
-			name: name.trim(),
-			tileId: tileId
+			id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+			name: fields.name,
+			tileId: fields.tileId
 		};
 		
 		this.favorites.push(favorite);
 		this._saveFavorites();
 		this._buildFavoritesList();
-		this._updateStatus(`Added favorite: ${name} (ID: ${tileId})`, 'success');
+		this._updateStatus(`Added favorite: ${fields.name} (ID: ${fields.tileId})`, 'success');
+	}
+	
+	/**
+	 * Show dialog to edit an existing favorite
+	 */
+	_showEditFavoriteDialog(favorite) {
+		const fields = this._promptFavoriteFields({
+			name: favorite.name,
+			tileId: favorite.tileId
+		});
+		if (!fields) return;
+		
+		favorite.name = fields.name;
+		favorite.tileId = fields.tileId;
+		this._saveFavorites();
+		this._buildFavoritesList();
+		this._updateStatus(`Updated favorite: ${fields.name} (ID: ${fields.tileId})`, 'success');
 	}
 	
 	/**
@@ -1887,6 +1916,7 @@ class PNGToOTBMApp {
 		item.className = 'favorite-item';
 		item.draggable = true;
 		item.setAttribute('data-favorite-id', favorite.id);
+		item.title = 'Drag to assign · Double-click to edit';
 		
 		// Favorite content
 		const name = document.createElement('div');
@@ -1897,11 +1927,24 @@ class PNGToOTBMApp {
 		id.className = 'favorite-id';
 		id.textContent = `ID: ${favorite.tileId}`;
 		
-		// Delete button
+		const actions = document.createElement('div');
+		actions.className = 'favorite-actions';
+		
+		const editBtn = document.createElement('button');
+		editBtn.className = 'btn-icon-only favorite-edit';
+		editBtn.innerHTML = '<span class="favorite-edit-icon" aria-hidden="true">✎</span>';
+		editBtn.title = 'Edit favorite';
+		editBtn.setAttribute('aria-label', 'Edit favorite');
+		editBtn.addEventListener('click', (e) => {
+			e.stopPropagation();
+			this._showEditFavoriteDialog(favorite);
+		});
+		
 		const deleteBtn = document.createElement('button');
 		deleteBtn.className = 'btn-icon-only favorite-delete';
 		deleteBtn.textContent = '×';
 		deleteBtn.title = 'Delete favorite';
+		deleteBtn.setAttribute('aria-label', 'Delete favorite');
 		deleteBtn.addEventListener('click', (e) => {
 			e.stopPropagation();
 			if (confirm(`Delete favorite "${favorite.name}"?`)) {
@@ -1910,6 +1953,14 @@ class PNGToOTBMApp {
 				this._buildFavoritesList();
 				this._updateStatus(`Deleted favorite: ${favorite.name}`, 'success');
 			}
+		});
+		
+		actions.appendChild(editBtn);
+		actions.appendChild(deleteBtn);
+		
+		item.addEventListener('dblclick', (e) => {
+			if (e.target.closest('button')) return;
+			this._showEditFavoriteDialog(favorite);
 		});
 		
 		// Drag handlers
@@ -1924,7 +1975,7 @@ class PNGToOTBMApp {
 		
 		item.appendChild(name);
 		item.appendChild(id);
-		item.appendChild(deleteBtn);
+		item.appendChild(actions);
 		
 		return item;
 	}

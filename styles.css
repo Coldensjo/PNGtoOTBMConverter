@@ -600,6 +600,13 @@ input[type="number"].color-id-input {
 	font-family: var(--font-mono);
 }
 
+.favorite-actions {
+	display: flex;
+	gap: 4px;
+	flex-shrink: 0;
+}
+
+.favorite-edit,
 .favorite-delete {
 	padding: 2px 6px;
 	min-width: 20px;
@@ -608,6 +615,22 @@ input[type="number"].color-id-input {
 	line-height: 1;
 	opacity: 0.6;
 	flex-shrink: 0;
+}
+
+.favorite-edit {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.favorite-edit-icon {
+	display: block;
+	transform: translateY(-2px);
+}
+
+.favorite-edit:hover {
+	opacity: 1;
+	color: var(--accent);
 }
 
 .favorite-delete:hover {
