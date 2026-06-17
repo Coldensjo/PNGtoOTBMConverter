@@ -491,6 +491,19 @@ input[type="number"].color-id-input {
 	background: #22291f;
 }
 
+.favorites-toolbar {
+	padding: 0 16px 5px;
+	margin-top: 5px;
+	display: flex;
+	gap: 8px;
+	border-bottom: 1px solid var(--border-color);
+}
+
+.favorites-toolbar .btn-small {
+	flex: 1;
+	min-width: 0;
+}
+
 /* Favorites Panel - Header button alignment */
 .favorites-panel .panel-header {
 	display: flex;

@@ -61,6 +61,8 @@ class PNGToOTBMApp {
 		this.mapScaleHint = document.getElementById('mapScaleHint');
 		this.pixelInfo = document.getElementById('pixelInfo');
 		this.addFavoriteBtn = document.getElementById('addFavoriteBtn');
+		this.exportFavoritesBtn = document.getElementById('exportFavoritesBtn');
+		this.importFavoritesBtn = document.getElementById('importFavoritesBtn');
 		this.favoritesList = document.getElementById('favoritesList');
 		this.favoritesEmptyState = document.getElementById('favoritesEmptyState');
 		this.simplifySection = document.getElementById('simplifySection');
@@ -165,6 +167,8 @@ class PNGToOTBMApp {
 		
 		// Favorites
 		this.addFavoriteBtn.addEventListener('click', () => this._showAddFavoriteDialog());
+		this.exportFavoritesBtn.addEventListener('click', () => this._exportFavorites());
+		this.importFavoritesBtn.addEventListener('click', () => this._importFavorites());
 		
 		// Settings change handlers (for localStorage)
 		this.clientVersion.addEventListener('change', () => this._saveSettings());
@@ -1826,6 +1830,138 @@ class PNGToOTBMApp {
 	}
 	
 	/**
+	 * Generate a unique favorite ID
+	 * @returns {string}
+	 */
+	_createFavoriteId() {
+		return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+	}
+
+	/**
+	 * Normalize imported favorite entries from JSON
+	 * @param {unknown} importData
+	 * @returns {Array<{ name: string, tileId: number }>}
+	 */
+	_parseFavoriteImportData(importData) {
+		const rawFavorites = Array.isArray(importData)
+			? importData
+			: (importData && Array.isArray(importData.favorites) ? importData.favorites : null);
+
+		if (!rawFavorites) {
+			throw new Error('Invalid file format');
+		}
+
+		const parsed = [];
+		for (const entry of rawFavorites) {
+			if (!entry || typeof entry.name !== 'string' || !entry.name.trim()) {
+				continue;
+			}
+
+			const tileId = parseInt(entry.tileId);
+			if (isNaN(tileId) || tileId < 0 || tileId > 65535) {
+				continue;
+			}
+
+			parsed.push({
+				name: entry.name.trim(),
+				tileId
+			});
+		}
+
+		return parsed;
+	}
+
+	/**
+	 * Export favorites to JSON file
+	 */
+	_exportFavorites() {
+		if (this.favorites.length === 0) {
+			this._updateStatus('No favorites to export', 'error');
+			return;
+		}
+
+		try {
+			const exportData = {
+				version: 1,
+				favorites: this.favorites.map(({ name, tileId }) => ({ name, tileId }))
+			};
+
+			const json = JSON.stringify(exportData, null, 2);
+			const blob = new Blob([json], { type: 'application/json' });
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url;
+			a.download = 'favorites.json';
+			document.body.appendChild(a);
+			a.click();
+			document.body.removeChild(a);
+			URL.revokeObjectURL(url);
+
+			this._updateStatus('Favorites exported successfully', 'success');
+		} catch (error) {
+			this._updateStatus(`Export failed: ${error.message}`, 'error');
+		}
+	}
+
+	/**
+	 * Import favorites from JSON file
+	 */
+	_importFavorites() {
+		const input = document.createElement('input');
+		input.type = 'file';
+		input.accept = '.json';
+
+		input.onchange = (e) => {
+			const file = e.target.files[0];
+			if (!file) return;
+
+			const reader = new FileReader();
+			reader.onload = (event) => {
+				try {
+					const importData = JSON.parse(event.target.result);
+					const parsedFavorites = this._parseFavoriteImportData(importData);
+
+					if (parsedFavorites.length === 0) {
+						throw new Error('No valid favorites found in file');
+					}
+
+					let imported = 0;
+					for (const favoriteData of parsedFavorites) {
+						const duplicate = this.favorites.some(
+							f => f.name === favoriteData.name && f.tileId === favoriteData.tileId
+						);
+						if (duplicate) {
+							continue;
+						}
+
+						this.favorites.push({
+							id: this._createFavoriteId(),
+							name: favoriteData.name,
+							tileId: favoriteData.tileId
+						});
+						imported++;
+					}
+
+					if (imported === 0) {
+						this._updateStatus('All favorites in file already exist', 'error');
+						return;
+					}
+
+					this._saveFavorites();
+					this._buildFavoritesList();
+					this._updateStatus(`Imported ${imported} favorite(s)`, 'success');
+				} catch (error) {
+					this._updateStatus(`Import failed: ${error.message}`, 'error');
+				}
+			};
+
+			reader.readAsText(file);
+		};
+
+		input.click();
+	}
+
+	/**
 	 * Prompt for favorite name and tile ID
 	 * @param {{ name?: string, tileId?: number }} [defaults]
 	 * @returns {{ name: string, tileId: number } | null}
@@ -1855,7 +1991,7 @@ class PNGToOTBMApp {
 		if (!fields) return;
 		
 		const favorite = {
-			id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+			id: this._createFavoriteId(),
 			name: fields.name,
 			tileId: fields.tileId
 		};
