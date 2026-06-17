@@ -27,7 +27,9 @@ class PNGToOTBMApp {
 		
 		// DOM Elements
 		this.fileInput = document.getElementById('fileInput');
+		this.otbmFileInput = document.getElementById('otbmFileInput');
 		this.importBtn = document.getElementById('importBtn');
+		this.importOtbmBtn = document.getElementById('importOtbmBtn');
 		this.previewCanvas = document.getElementById('previewCanvas');
 		this.previewContainer = document.getElementById('previewContainer');
 		this.previewPlaceholder = document.getElementById('previewPlaceholder');
@@ -116,6 +118,10 @@ class PNGToOTBMApp {
 		
 		// File input change
 		this.fileInput.addEventListener('change', (e) => this._handleFileSelect(e));
+
+		// OTBM → PNG (inverse conversion)
+		this.importOtbmBtn.addEventListener('click', () => this.otbmFileInput.click());
+		this.otbmFileInput.addEventListener('change', (e) => this._handleOTBMSelect(e));
 		
 		// Drag and drop
 		this.previewContainer.addEventListener('dragover', (e) => {
@@ -132,8 +138,11 @@ class PNGToOTBMApp {
 			this.previewContainer.classList.remove('drag-over');
 			
 			const file = e.dataTransfer.files[0];
-			if (file && file.type.startsWith('image/')) {
+			if (!file) return;
+			if (file.type.startsWith('image/')) {
 				this._loadImage(file);
+			} else if (file.name.toLowerCase().endsWith('.otbm')) {
+				this._loadOTBM(file);
 			}
 		});
 		
@@ -264,6 +273,232 @@ class PNGToOTBMApp {
 		reader.readAsDataURL(file);
 	}
 	
+	/**
+	 * Handle OTBM file selection from the hidden file input
+	 */
+	_handleOTBMSelect(event) {
+		const file = event.target.files[0];
+		if (file) {
+			this._loadOTBM(file);
+		}
+		// Reset so selecting the same file again re-triggers the change event
+		event.target.value = '';
+	}
+
+	/**
+	 * Load an OTBM file, convert it to a PNG, render it in the preview, and
+	 * trigger a download. This is the inverse of OTBM generation: each tile
+	 * becomes one pixel, colored by its ground item ID.
+	 */
+	_loadOTBM(file) {
+		this._updateStatus(`Reading ${file.name}...`, '');
+
+		const reader = new FileReader();
+		reader.onload = (e) => {
+			try {
+				const mapData = new OTBMReader(e.target.result).parse();
+
+				if (!mapData.tiles.length) {
+					this._updateStatus('No tiles found in OTBM file', 'error');
+					return;
+				}
+
+				const { canvas, info } = this._otbmToCanvas(mapData);
+
+				// Download the PNG
+				const baseName = file.name.replace(/\.otbm$/i, '') || 'map';
+				canvas.toBlob((blob) => {
+					if (!blob) {
+						this._updateStatus('Failed to encode PNG', 'error');
+						return;
+					}
+					const url = URL.createObjectURL(blob);
+					const a = document.createElement('a');
+					a.href = url;
+					a.download = `${baseName}.png`;
+					document.body.appendChild(a);
+					a.click();
+					document.body.removeChild(a);
+					URL.revokeObjectURL(url);
+				}, 'image/png');
+
+				// Load the result into the app as the current image so the user
+				// can inspect it and (re)generate if desired.
+				this._applyCanvasAsImage(canvas).then(() => {
+					this._zoomFit();
+					this._analyzeColors();
+					this._updateStatus(
+						`✓ Converted ${file.name} → PNG (${info.width} × ${info.height}, ` +
+						`${info.tileCount.toLocaleString()} tiles, floor z=${info.z}, ` +
+						`${info.uniqueIds} unique IDs)`,
+						'success'
+					);
+				});
+			} catch (error) {
+				this._updateStatus(`Failed to read OTBM: ${error.message}`, 'error');
+				console.error('OTBM read error:', error);
+			}
+		};
+		reader.onerror = () => this._updateStatus('Failed to read OTBM file', 'error');
+		reader.readAsArrayBuffer(file);
+	}
+
+	/**
+	 * Render parsed OTBM map data onto a canvas, one pixel per tile.
+	 *
+	 * The map may span several floors (z). A 2D PNG can only show one, so we
+	 * pick the floor with the most tiles. Each ground item ID is mapped to a
+	 * color: known IDs reuse the current color mappings (so a PNG→OTBM→PNG
+	 * round-trip preserves colors), and unknown IDs get a stable generated color.
+	 *
+	 * @returns {{ canvas: HTMLCanvasElement, info: Object }}
+	 */
+	_otbmToCanvas(mapData) {
+		// Choose the most populated floor.
+		const tilesByZ = new Map();
+		for (const tile of mapData.tiles) {
+			if (!tilesByZ.has(tile.z)) tilesByZ.set(tile.z, []);
+			tilesByZ.get(tile.z).push(tile);
+		}
+		let z = 0;
+		let tiles = [];
+		for (const [floor, floorTiles] of tilesByZ) {
+			if (floorTiles.length > tiles.length) {
+				tiles = floorTiles;
+				z = floor;
+			}
+		}
+
+		// Bounding box of the chosen floor (produces a tight PNG).
+		let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+		for (const tile of tiles) {
+			if (tile.x < minX) minX = tile.x;
+			if (tile.y < minY) minY = tile.y;
+			if (tile.x > maxX) maxX = tile.x;
+			if (tile.y > maxY) maxY = tile.y;
+		}
+		const width = maxX - minX + 1;
+		const height = maxY - minY + 1;
+
+		// Build an ID → color lookup. Reuse existing assignments where possible.
+		const idToColor = this._buildIdColorLookup(tiles);
+
+		const canvas = document.createElement('canvas');
+		canvas.width = width;
+		canvas.height = height;
+		const ctx = canvas.getContext('2d');
+		const imageData = ctx.createImageData(width, height);
+		const px = imageData.data;
+		// Tiles default to transparent; only painted tiles become opaque pixels.
+
+		const uniqueIds = new Set();
+		for (const tile of tiles) {
+			uniqueIds.add(tile.groundId);
+			const color = idToColor.get(tile.groundId);
+			const idx = ((tile.y - minY) * width + (tile.x - minX)) * 4;
+			px[idx] = color.r;
+			px[idx + 1] = color.g;
+			px[idx + 2] = color.b;
+			px[idx + 3] = 255;
+		}
+
+		ctx.putImageData(imageData, 0, 0);
+
+		return {
+			canvas,
+			info: { width, height, z, tileCount: tiles.length, uniqueIds: uniqueIds.size }
+		};
+	}
+
+	/**
+	 * Map each ground item ID present in the tiles to a color.
+	 *
+	 * The IDs are ranked by how many tiles use them. The four most common get
+	 * fixed colors so the dominant terrain is easy to read at a glance:
+	 *   1st → blue, 2nd → green, 3rd → grey, 4th → red.
+	 * Every remaining ID gets a deterministic, visually distinct generated color.
+	 */
+	_buildIdColorLookup(tiles) {
+		// Count how many tiles use each ground ID.
+		const counts = new Map();
+		for (const tile of tiles) {
+			counts.set(tile.groundId, (counts.get(tile.groundId) || 0) + 1);
+		}
+
+		// Rank by frequency (most common first). Ties break by ID for stability.
+		const rankedIds = [...counts.entries()]
+			.sort((a, b) => b[1] - a[1] || a[0] - b[0])
+			.map(([id]) => id);
+
+		// Fixed colors for the top four, in rank order.
+		const topColors = [
+			{ r: 0, g: 0, b: 255 },     // 1st — blue
+			{ r: 0, g: 255, b: 0 },     // 2nd — green
+			{ r: 128, g: 128, b: 128 }, // 3rd — grey
+			{ r: 255, g: 0, b: 0 }      // 4th — red
+		];
+
+		const idToColor = new Map();
+		rankedIds.forEach((id, rank) => {
+			idToColor.set(
+				id,
+				rank < topColors.length ? topColors[rank] : this._generateColor(rank - topColors.length)
+			);
+		});
+
+		return idToColor;
+	}
+
+	/**
+	 * Generate a deterministic, visually distinct RGB color for an index using
+	 * the golden-ratio hue spacing so consecutive IDs look different.
+	 */
+	_generateColor(index) {
+		const hue = (index * 137.508) % 360; // golden angle
+		return this._hslToRgb(hue, 0.65, 0.55);
+	}
+
+	/**
+	 * Convert HSL (h in degrees, s/l in 0..1) to an {r,g,b} object (0..255).
+	 */
+	_hslToRgb(h, s, l) {
+		const c = (1 - Math.abs(2 * l - 1)) * s;
+		const hp = h / 60;
+		const x = c * (1 - Math.abs((hp % 2) - 1));
+		let r = 0, g = 0, b = 0;
+		if (hp < 1) { r = c; g = x; }
+		else if (hp < 2) { r = x; g = c; }
+		else if (hp < 3) { g = c; b = x; }
+		else if (hp < 4) { g = x; b = c; }
+		else if (hp < 5) { r = x; b = c; }
+		else { r = c; b = x; }
+		const m = l - c / 2;
+		return {
+			r: Math.round((r + m) * 255),
+			g: Math.round((g + m) * 255),
+			b: Math.round((b + m) * 255)
+		};
+	}
+
+	/**
+	 * Replace the working image with the contents of a canvas (used by the
+	 * OTBM → PNG conversion). Resolves once the new image is ready.
+	 */
+	_applyCanvasAsImage(canvas) {
+		return new Promise((resolve, reject) => {
+			const dataUrl = canvas.toDataURL('image/png');
+			const img = new Image();
+			img.onload = () => {
+				this.image = img;
+				this.imageExceedsLimits = !this._checkImageComplexity(img.width, img.height).valid;
+				this._updatePreview();
+				resolve();
+			};
+			img.onerror = () => reject(new Error('Failed to load converted image'));
+			img.src = dataUrl;
+		});
+	}
+
 	/**
 	 * Check if image is too complex to process
 	 * @param {number} width - Image width in pixels

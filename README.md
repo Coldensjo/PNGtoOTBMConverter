@@ -19,6 +19,10 @@ A small **browser-based** tool that turns a PNG into an **OTBM** (Open Tibia Bin
 
 Then open the file in **[Remere’s Map Editor](https://github.com/karolak6612/remeres-map-editor-redux)** or your usual Tibia mapping workflow.
 
+### Reverse: OTBM → PNG
+
+Click **OTBM → PNG** (or drag and drop an `.otbm` file) to convert a map back into an image. Each tile becomes one pixel colored by its ground item ID. If the map spans several floors, the most populated floor is used. Item IDs already present in your current color list reuse their assigned color (so a PNG → OTBM → PNG round-trip preserves colors); any other IDs get a distinct generated color. The PNG downloads automatically and is loaded into the preview.
+
 ## What you get
 
 | Input | Output |
@@ -51,6 +55,7 @@ Use **Ignore size limits** only when you know your machine can handle it.
 | `index.html` | UI |
 | `app.js` | Image handling, color detection, UI logic |
 | `otbm-writer.js` | OTBM binary serialization |
+| `otbm-reader.js` | OTBM binary parsing (OTBM → PNG) |
 | `clients-data.js` | Client ↔ OTB version data (from RME-style `clients.xml` mappings) |
 | `styles.css` | Styling |
 

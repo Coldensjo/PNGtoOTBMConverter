@@ -54,8 +54,12 @@
 
 				<div class="import-section">
 					<input type="file" id="fileInput" accept="image/*" hidden aria-label="Select PNG image file">
+					<input type="file" id="otbmFileInput" accept=".otbm" hidden aria-label="Select OTBM map file">
 					<button class="btn btn-primary" id="importBtn" aria-label="Import PNG image">
 						Import PNG
+					</button>
+					<button class="btn" id="importOtbmBtn" title="Convert an OTBM map back into a PNG" aria-label="Import OTBM map">
+						OTBM → PNG
 					</button>
 				</div>
 			</section>
@@ -179,6 +183,7 @@
 
 	<script src="clients-data.js"></script>
 	<script src="otbm-writer.js"></script>
+	<script src="otbm-reader.js"></script>
 	<script src="app.js"></script>
 </body>
 </html>
