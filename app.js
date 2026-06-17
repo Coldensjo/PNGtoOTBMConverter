@@ -39,6 +39,8 @@ class PNGToOTBMApp {
 		this.emptyState = document.getElementById('emptyState');
 		this.generateBtn = document.getElementById('generateBtn');
 		this.ignoreSizeLimits = document.getElementById('ignoreSizeLimits');
+		this.flipHorizontal = document.getElementById('flipHorizontal');
+		this.flipVertical = document.getElementById('flipVertical');
 		this.status = document.getElementById('status');
 		this.clientVersion = document.getElementById('clientVersion');
 		this.transparentTileId = document.getElementById('transparentTileId');
@@ -149,6 +151,8 @@ class PNGToOTBMApp {
 		// Generate button
 		this.generateBtn.addEventListener('click', () => this._generateOTBM());
 		this.ignoreSizeLimits.addEventListener('change', () => this._updateGenerateButtonState());
+		this.flipHorizontal.addEventListener('change', () => this._saveSettings());
+		this.flipVertical.addEventListener('change', () => this._saveSettings());
 		this.simplifyColorsBtn.addEventListener('click', () => this._handleSimplifyColors());
 		this.targetColorCount.addEventListener('change', () => this._saveSettings());
 		
@@ -1398,10 +1402,14 @@ class PNGToOTBMApp {
 			// When downscaled (scale < 100), each output tile samples the
 			// nearest source pixel; at 100% this is a 1:1 mapping.
 			const downscaled = scale < 100;
+			const flipH = this.flipHorizontal.checked;
+			const flipV = this.flipVertical.checked;
 			for (let y = 0; y < height; y++) {
 				const sy = downscaled ? Math.min(srcHeight - 1, Math.floor(y * srcHeight / height)) : y;
+				const tileY = (flipV ? height - 1 - y : y) + offY;
 				for (let x = 0; x < width; x++) {
 					const sx = downscaled ? Math.min(srcWidth - 1, Math.floor(x * srcWidth / width)) : x;
+					const tileX = (flipH ? width - 1 - x : x) + offX;
 					const i = (sy * srcWidth + sx) * 4;
 					const r = pixels[i];
 					const g = pixels[i + 1];
@@ -1411,7 +1419,7 @@ class PNGToOTBMApp {
 					// Handle transparent pixels
 					if (a < 128) {
 						if (transparentId > 0) {
-							writer.addTile(x + offX, y + offY, z, transparentId);
+							writer.addTile(tileX, tileY, z, transparentId);
 							transparentTileCount++;
 							tileCount++;
 						}
@@ -1420,7 +1428,7 @@ class PNGToOTBMApp {
 						const tileId = colorToTile.get(hex);
 						
 						if (tileId) {
-							writer.addTile(x + offX, y + offY, z, tileId);
+							writer.addTile(tileX, tileY, z, tileId);
 							tileCount++;
 						}
 					}
@@ -1526,6 +1534,8 @@ class PNGToOTBMApp {
 					const s = Math.max(1, Math.min(100, parseInt(parsed.mapScale, 10) || 100));
 					this.mapScale.value = s;
 				}
+				if (parsed.flipHorizontal !== undefined) this.flipHorizontal.checked = !!parsed.flipHorizontal;
+				if (parsed.flipVertical !== undefined) this.flipVertical.checked = !!parsed.flipVertical;
 			}
 		} catch (error) {
 			console.warn('Failed to load settings:', error);
@@ -1544,7 +1554,9 @@ class PNGToOTBMApp {
 				offsetX: parseInt(this.offsetX.value) || 0,
 				offsetY: parseInt(this.offsetY.value) || 0,
 				targetColorCount: parseInt(this.targetColorCount.value, 10) || RECOMMENDED_MAX_COLORS,
-				mapScale: this._getMapScale()
+				mapScale: this._getMapScale(),
+				flipHorizontal: this.flipHorizontal.checked,
+				flipVertical: this.flipVertical.checked
 			};
 			localStorage.setItem('pngToOtbmSettings', JSON.stringify(settings));
 		} catch (error) {

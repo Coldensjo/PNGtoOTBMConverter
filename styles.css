@@ -724,6 +724,27 @@ input[type="number"].color-id-input {
 	cursor: pointer;
 }
 
+.generate-options {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12px 20px;
+	margin: 0 20px 14px;
+}
+
+.generate-option-label {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 12px;
+	color: var(--text-secondary);
+	cursor: pointer;
+	user-select: none;
+}
+
+.generate-option-label input {
+	cursor: pointer;
+}
+
 .btn-success {
 	background: var(--success);
 	color: #10120f;
