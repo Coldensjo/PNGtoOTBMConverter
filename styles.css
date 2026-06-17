@@ -166,6 +166,25 @@ body {
 	gap: 8px;
 }
 
+.map-scale-control {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.map-scale-unit {
+	font-size: 12px;
+	color: var(--text-muted);
+}
+
+.map-scale-hint {
+	font-size: 12px;
+	line-height: 1.45;
+	color: var(--text-muted);
+	font-family: var(--font-mono);
+	margin: -2px 0 2px;
+}
+
 .btn-zoom {
 	padding: 6px 10px;
 	font-size: 14px;

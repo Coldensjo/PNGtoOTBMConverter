@@ -53,6 +53,8 @@ class PNGToOTBMApp {
 		this.zoomOutBtn = document.getElementById('zoomOutBtn');
 		this.zoomFitBtn = document.getElementById('zoomFitBtn');
 		this.zoomLevelDisplay = document.getElementById('zoomLevel');
+		this.mapScale = document.getElementById('mapScale');
+		this.mapScaleHint = document.getElementById('mapScaleHint');
 		this.pixelInfo = document.getElementById('pixelInfo');
 		this.addFavoriteBtn = document.getElementById('addFavoriteBtn');
 		this.favoritesList = document.getElementById('favoritesList');
@@ -165,6 +167,13 @@ class PNGToOTBMApp {
 		this.zoomInBtn.addEventListener('click', () => this._zoomIn());
 		this.zoomOutBtn.addEventListener('click', () => this._zoomOut());
 		this.zoomFitBtn.addEventListener('click', () => this._zoomFit());
+
+		// Map scale (downsizes the output map without altering the image)
+		this.mapScale.addEventListener('input', () => this._onMapScaleChange());
+		this.mapScale.addEventListener('change', () => {
+			this._onMapScaleChange();
+			this._saveSettings();
+		});
 		
 		// Mouse wheel zoom (scroll up/down to zoom)
 		this.previewContainer.addEventListener('wheel', (e) => {
@@ -216,10 +225,12 @@ class PNGToOTBMApp {
 			const img = new Image();
 			
 			img.onload = () => {
-				const complexityCheck = this._checkImageComplexity(img.width, img.height);
-				this.imageExceedsLimits = !complexityCheck.valid;
-				
 				this.image = img;
+				// Evaluate limits against the scaled output, not the raw image
+				const { width: outW, height: outH } = this._getOutputDimensions();
+				const complexityCheck = this._checkImageComplexity(outW, outH);
+				this.imageExceedsLimits = !complexityCheck.valid;
+
 				const containerRect = this.previewContainer.getBoundingClientRect();
 				const maxWidth = containerRect.width - 32;
 				const maxHeight = containerRect.height - 32;
@@ -234,7 +245,7 @@ class PNGToOTBMApp {
 				if (colorAnalysisResult?.success || colorAnalysisResult?.tooManyColors) {
 					if (this.imageExceedsLimits) {
 						this._updateStatus(
-							`${complexityCheck.error} Enable "Ignore size limits" to generate.`,
+							`${complexityCheck.error} Lower "Map scale" or enable "Ignore size limits" to generate.`,
 							'warning'
 						);
 					} else {
@@ -312,6 +323,61 @@ class PNGToOTBMApp {
 		
 		// Update zoom level display
 		this._updateZoomDisplay();
+
+		// Update map scale hint
+		this._updateMapScaleHint();
+	}
+
+	/**
+	 * Read and clamp the map scale percentage from the input
+	 */
+	_getMapScale() {
+		let scale = parseFloat(this.mapScale.value);
+		if (!Number.isFinite(scale)) scale = 100;
+		return Math.max(1, Math.min(100, scale));
+	}
+
+	/**
+	 * Compute the output map dimensions after applying the map scale.
+	 * The source image is never modified — only the tile grid is downsampled.
+	 */
+	_getOutputDimensions() {
+		const scale = this._getMapScale();
+		const width = Math.max(1, Math.round(this.image.width * scale / 100));
+		const height = Math.max(1, Math.round(this.image.height * scale / 100));
+		return { width, height, scale };
+	}
+
+	/**
+	 * Show the resulting map size (in tiles) for the current scale, and warn
+	 * if it still exceeds the limits.
+	 */
+	_updateMapScaleHint() {
+		if (!this.mapScaleHint) return;
+
+		if (!this.image) {
+			this.mapScaleHint.textContent = '';
+			return;
+		}
+
+		const { width, height, scale } = this._getOutputDimensions();
+		if (scale >= 100) {
+			this.mapScaleHint.textContent = `Map: ${width} × ${height} tiles (full size)`;
+		} else {
+			this.mapScaleHint.textContent = `Map: ${width} × ${height} tiles (${this.image.width} × ${this.image.height} at ${scale}%)`;
+		}
+	}
+
+	/**
+	 * Re-evaluate size limits against the scaled output and refresh UI.
+	 */
+	_onMapScaleChange() {
+		if (this.image) {
+			const { width, height } = this._getOutputDimensions();
+			this.imageExceedsLimits = !this._checkImageComplexity(width, height).valid;
+		}
+		this._updateMapScaleHint();
+		this._updateGenerateButtonState();
 	}
 	
 	/**
@@ -1006,9 +1072,11 @@ class PNGToOTBMApp {
 				return;
 			}
 			
-			const width = this.image.width;
-			const height = this.image.height;
-			
+			// Source image dimensions (unchanged) and scaled output map dimensions
+			const srcWidth = this.image.width;
+			const srcHeight = this.image.height;
+			const { width, height, scale } = this._getOutputDimensions();
+
 			const complexityCheck = this._checkImageComplexity(width, height);
 			if (!complexityCheck.valid && !this.ignoreSizeLimits.checked) {
 				this._updateStatus(complexityCheck.error, 'error');
@@ -1092,9 +1160,14 @@ class PNGToOTBMApp {
 				this.progressContainer.style.display = 'block';
 			}
 			
+			// When downscaled (scale < 100), each output tile samples the
+			// nearest source pixel; at 100% this is a 1:1 mapping.
+			const downscaled = scale < 100;
 			for (let y = 0; y < height; y++) {
+				const sy = downscaled ? Math.min(srcHeight - 1, Math.floor(y * srcHeight / height)) : y;
 				for (let x = 0; x < width; x++) {
-					const i = (y * width + x) * 4;
+					const sx = downscaled ? Math.min(srcWidth - 1, Math.floor(x * srcWidth / width)) : x;
+					const i = (sy * srcWidth + sx) * 4;
 					const r = pixels[i];
 					const g = pixels[i + 1];
 					const b = pixels[i + 2];
@@ -1143,6 +1216,9 @@ class PNGToOTBMApp {
 			let statusMsg = `✓ Downloaded: ${filename} (${fileSize.toLocaleString()} bytes, ${tileCount.toLocaleString()} tiles`;
 			if (transparentTileCount > 0) {
 				statusMsg += `, ${transparentTileCount.toLocaleString()} transparent`;
+			}
+			if (scale < 100) {
+				statusMsg += `, ${width} × ${height} map @ ${scale}%`;
 			}
 			statusMsg += `, Client: ${clientConfig.name})`;
 			this._updateStatus(statusMsg, 'success');
@@ -1211,6 +1287,10 @@ class PNGToOTBMApp {
 					const t = Math.max(2, Math.min(256, parseInt(parsed.targetColorCount, 10) || RECOMMENDED_MAX_COLORS));
 					this.targetColorCount.value = t;
 				}
+				if (parsed.mapScale !== undefined) {
+					const s = Math.max(1, Math.min(100, parseInt(parsed.mapScale, 10) || 100));
+					this.mapScale.value = s;
+				}
 			}
 		} catch (error) {
 			console.warn('Failed to load settings:', error);
@@ -1228,7 +1308,8 @@ class PNGToOTBMApp {
 				zLevel: parseInt(this.zLevel.value) || 7,
 				offsetX: parseInt(this.offsetX.value) || 0,
 				offsetY: parseInt(this.offsetY.value) || 0,
-				targetColorCount: parseInt(this.targetColorCount.value, 10) || RECOMMENDED_MAX_COLORS
+				targetColorCount: parseInt(this.targetColorCount.value, 10) || RECOMMENDED_MAX_COLORS,
+				mapScale: this._getMapScale()
 			};
 			localStorage.setItem('pngToOtbmSettings', JSON.stringify(settings));
 		} catch (error) {

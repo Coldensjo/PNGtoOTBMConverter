@@ -102,6 +102,15 @@
 
 					<div class="settings-section">
 					<div class="setting-row">
+						<label for="mapScale">Map scale</label>
+						<div class="map-scale-control">
+							<input type="number" id="mapScale" value="100" min="1" max="100" step="1" class="input-small" aria-label="Output map scale percentage">
+							<span class="map-scale-unit">%</span>
+						</div>
+					</div>
+					<p class="map-scale-hint" id="mapScaleHint"></p>
+
+					<div class="setting-row">
 						<label for="clientVersion">Client version</label>
 						<select id="clientVersion" class="input-select" aria-label="Select Tibia client version">
 							<!-- Options will be populated by JavaScript -->
