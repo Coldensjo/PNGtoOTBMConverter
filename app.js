@@ -10,6 +10,10 @@ const KMEANS_SAMPLE_SIZE = 8000;
 const KMEANS_ITERATIONS = 12;
 const CLEANUP_AGGRESSIVENESS_LABELS = ['Gentle', 'Light', 'Balanced', 'Strong', 'Maximum'];
 const DEFAULT_CLEANUP_AGGRESSIVENESS = 3;
+const REFINE_STRENGTH_LABELS = ['Gentle', 'Light', 'Balanced', 'Strong', 'Maximum'];
+const DEFAULT_REFINE_STRENGTH = 3;
+const DEFAULT_REFINE_RANGE = 5;
+const DEFAULT_REFINE_PASSES = 3;
 
 class PNGToOTBMApp {
 	constructor() {
@@ -76,6 +80,14 @@ class PNGToOTBMApp {
 		this.smartCleanupBtn = document.getElementById('smartCleanupBtn');
 		this.cleanupAggressiveness = document.getElementById('cleanupAggressiveness');
 		this.cleanupAggressivenessValue = document.getElementById('cleanupAggressivenessValue');
+		this.refineSection = document.getElementById('refineSection');
+		this.refineEdgesBtn = document.getElementById('refineEdgesBtn');
+		this.refineStrength = document.getElementById('refineStrength');
+		this.refineStrengthValue = document.getElementById('refineStrengthValue');
+		this.refineRange = document.getElementById('refineRange');
+		this.refineRangeValue = document.getElementById('refineRangeValue');
+		this.refinePasses = document.getElementById('refinePasses');
+		this.refinePassesValue = document.getElementById('refinePassesValue');
 		
 		// Canvas context
 		this.ctx = this.previewCanvas.getContext('2d');
@@ -85,6 +97,7 @@ class PNGToOTBMApp {
 		this._loadSettings();
 		this._loadFavorites();
 		this._updateCleanupAggressivenessLabel();
+		this._updateRefineSliderLabels();
 		this._bindEvents();
 	}
 	
@@ -171,6 +184,19 @@ class PNGToOTBMApp {
 		this.smartCleanupBtn.addEventListener('click', () => this._handleSmartCleanup());
 		this.cleanupAggressiveness.addEventListener('input', () => {
 			this._updateCleanupAggressivenessLabel();
+			this._saveSettings();
+		});
+		this.refineEdgesBtn.addEventListener('click', () => this._handleRefineEdges());
+		this.refineStrength.addEventListener('input', () => {
+			this._updateRefineSliderLabels();
+			this._saveSettings();
+		});
+		this.refineRange.addEventListener('input', () => {
+			this._updateRefineSliderLabels();
+			this._saveSettings();
+		});
+		this.refinePasses.addEventListener('input', () => {
+			this._updateRefineSliderLabels();
 			this._saveSettings();
 		});
 		this.targetColorCount.addEventListener('change', () => this._saveSettings());
@@ -948,6 +974,7 @@ class PNGToOTBMApp {
 			this.colorCount.textContent = `${this.uniqueColorCount} colors`;
 			this._updateSimplifyPanel();
 			this._updateCleanupPanel();
+			this._updateRefinePanel();
 			this._updateGenerateButtonState();
 			return { success: false, tooManyColors: true };
 		}
@@ -992,6 +1019,7 @@ class PNGToOTBMApp {
 		
 		this._updateSimplifyPanel();
 		this._updateCleanupPanel();
+		this._updateRefinePanel();
 		this._updateGenerateButtonState();
 		
 		return { success: true };
@@ -1140,6 +1168,14 @@ class PNGToOTBMApp {
 	}
 	
 	/**
+	 * Show or hide the refine-edges panel when an image is loaded
+	 */
+	_updateRefinePanel() {
+		this.refineSection.hidden = !this.image;
+		this.refineEdgesBtn.disabled = !this.image || !this.imageData;
+	}
+	
+	/**
 	 * Show or hide the simplify-colors panel based on unique color count
 	 */
 	_updateSimplifyPanel() {
@@ -1279,6 +1315,387 @@ class PNGToOTBMApp {
 		const level = this._getCleanupAggressiveness();
 		this.cleanupAggressivenessValue.textContent = CLEANUP_AGGRESSIVENESS_LABELS[level - 1];
 		this.cleanupAggressiveness.setAttribute('aria-valuenow', String(level));
+	}
+	
+	/**
+	 * Straighten jagged stair-step edges and remove thin boundary protrusions
+	 */
+	async _handleRefineEdges() {
+		if (!this.image || !this.imageData) {
+			this._updateStatus('No image loaded', 'error');
+			return;
+		}
+		
+		this.refineEdgesBtn.disabled = true;
+		this._updateStatus('Refining edges…', '');
+		
+		try {
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			
+			const params = this._getRefineParams();
+			const { imageData: refined, changedCount } = this._refineEdges(this.imageData, params);
+			if (changedCount === 0) {
+				this._updateStatus('No jagged edges found to refine', 'success');
+				return;
+			}
+			
+			await this._applyImageDataToPreview(refined);
+			
+			const result = this._analyzeColors();
+			if (result?.success) {
+				this._updatePreview();
+				this._updateStatus(
+					`Refined edges: adjusted ${changedCount.toLocaleString()} boundary pixel${changedCount === 1 ? '' : 's'}`,
+					'success'
+				);
+			} else if (result?.tooManyColors) {
+				this._updateStatus(
+					`Adjusted ${changedCount.toLocaleString()} boundary pixel(s), but the image still has too many colors to map.`,
+					'warning'
+				);
+			}
+		} catch (error) {
+			this._updateStatus(`Edge refinement failed: ${error.message}`, 'error');
+		} finally {
+			this.refineEdgesBtn.disabled = !this.image || !this.imageData;
+		}
+	}
+	
+	/**
+	 * Iteratively straighten edges until stable or max passes reached
+	 */
+	_refineEdges(sourceData, params) {
+		const { width, height, data: src } = sourceData;
+		const out = new ImageData(width, height);
+		const dst = out.data;
+		dst.set(src);
+		
+		let changedCount = 0;
+		let pass = 0;
+		let changed = true;
+		
+		while (changed && pass < params.maxPasses) {
+			changed = false;
+			pass++;
+			const current = new Uint8ClampedArray(dst);
+			
+			for (let y = 0; y < height; y++) {
+				for (let x = 0; x < width; x++) {
+					const i = (y * width + x) * 4;
+					if (current[i + 3] < 128) continue;
+					
+					const replacement = this._getEdgeRefinementReplacement(current, width, height, x, y, params);
+					if (!replacement) continue;
+					
+					const [nr, ng, nb] = replacement;
+					if (current[i] === nr && current[i + 1] === ng && current[i + 2] === nb) continue;
+					
+					dst[i] = nr;
+					dst[i + 1] = ng;
+					dst[i + 2] = nb;
+					changed = true;
+					changedCount++;
+				}
+			}
+		}
+		
+		return { imageData: out, changedCount };
+	}
+	
+	_getRefineStrength() {
+		const value = parseInt(this.refineStrength.value, 10);
+		if (!Number.isFinite(value)) return DEFAULT_REFINE_STRENGTH;
+		return Math.max(1, Math.min(REFINE_STRENGTH_LABELS.length, value));
+	}
+	
+	_getRefineRange() {
+		const value = parseInt(this.refineRange.value, 10);
+		if (!Number.isFinite(value)) return DEFAULT_REFINE_RANGE;
+		return Math.max(2, Math.min(12, value));
+	}
+	
+	_getRefinePasses() {
+		const value = parseInt(this.refinePasses.value, 10);
+		if (!Number.isFinite(value)) return DEFAULT_REFINE_PASSES;
+		return Math.max(1, Math.min(8, value));
+	}
+	
+	_getRefineParams() {
+		const strength = this._getRefineStrength();
+		const presets = {
+			1: { maxEndpoints: 0, minCardinalVotes: 3, jagPatterns: false, allowIndentFill: false, lineTolerance: 0 },
+			2: { maxEndpoints: 1, minCardinalVotes: 3, jagPatterns: true, allowIndentFill: true, lineTolerance: 0 },
+			3: { maxEndpoints: 1, minCardinalVotes: 2, jagPatterns: true, allowIndentFill: true, lineTolerance: 1 },
+			4: { maxEndpoints: 1, minCardinalVotes: 2, jagPatterns: true, allowIndentFill: true, lineTolerance: 2 },
+			5: { maxEndpoints: 2, minCardinalVotes: 2, jagPatterns: true, allowIndentFill: true, lineTolerance: 3 }
+		};
+		const base = presets[strength] || presets[DEFAULT_REFINE_STRENGTH];
+		
+		return {
+			...base,
+			range: this._getRefineRange(),
+			maxPasses: this._getRefinePasses()
+		};
+	}
+	
+	_updateRefineSliderLabels() {
+		const strength = this._getRefineStrength();
+		const range = this._getRefineRange();
+		const passes = this._getRefinePasses();
+		
+		this.refineStrengthValue.textContent = REFINE_STRENGTH_LABELS[strength - 1];
+		this.refineStrength.setAttribute('aria-valuenow', String(strength));
+		this.refineRangeValue.textContent = `${range} px`;
+		this.refineRange.setAttribute('aria-valuenow', String(range));
+		this.refinePassesValue.textContent = String(passes);
+		this.refinePasses.setAttribute('aria-valuenow', String(passes));
+	}
+	
+	/**
+	 * Pick a replacement color to straighten a jagged boundary pixel
+	 */
+	_getEdgeRefinementReplacement(data, width, height, x, y, params) {
+		if (!this._isEdgePixel(data, width, height, x, y)) return null;
+		
+		const jagReplacement = params.jagPatterns
+			? this._getJagPatternReplacement(data, width, height, x, y)
+			: null;
+		if (jagReplacement) return jagReplacement;
+		
+		if (params.allowIndentFill) {
+			const indentReplacement = this._getIndentFillReplacement(data, width, height, x, y, params);
+			if (indentReplacement) return indentReplacement;
+		}
+		
+		const spikeReplacement = this._getBoundarySpikeReplacement(data, width, height, x, y, params);
+		if (spikeReplacement) return spikeReplacement;
+		
+		return this._getStairStepReplacement(data, width, height, x, y, params);
+	}
+	
+	_isEdgePixel(data, width, height, x, y) {
+		const i = (y * width + x) * 4;
+		if (data[i + 3] < 128) return false;
+		
+		const centerKey = this._rgbKey(data[i], data[i + 1], data[i + 2]);
+		for (let dy = -1; dy <= 1; dy++) {
+			for (let dx = -1; dx <= 1; dx++) {
+				if (dx === 0 && dy === 0) continue;
+				const nx = x + dx;
+				const ny = y + dy;
+				if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+				
+				const ni = (ny * width + nx) * 4;
+				if (data[ni + 3] < 128) return true;
+				if (this._rgbKey(data[ni], data[ni + 1], data[ni + 2]) !== centerKey) return true;
+			}
+		}
+		
+		return false;
+	}
+	
+	_getOpaqueRgb(data, width, height, x, y) {
+		if (x < 0 || x >= width || y < 0 || y >= height) return null;
+		const i = (y * width + x) * 4;
+		if (data[i + 3] < 128) return null;
+		return [data[i], data[i + 1], data[i + 2]];
+	}
+	
+	_sameRgb(a, b) {
+		return a && b && a[0] === b[0] && a[1] === b[1] && a[2] === b[2];
+	}
+	
+	/**
+	 * Remove thin spikes/endpoints on color boundaries
+	 */
+	_getBoundarySpikeReplacement(data, width, height, x, y, params) {
+		const center = this._getOpaqueRgb(data, width, height, x, y);
+		if (!center) return null;
+		
+		let sameCount = 0;
+		const cardinalColors = [];
+		for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]]) {
+			const neighbor = this._getOpaqueRgb(data, width, height, x + dx, y + dy);
+			if (!neighbor) continue;
+			cardinalColors.push(neighbor);
+			if (this._sameRgb(center, neighbor)) sameCount++;
+		}
+		
+		if (sameCount > params.maxEndpoints) return null;
+		if (cardinalColors.length < 3) return null;
+		
+		const counts = new Map();
+		for (const rgb of cardinalColors) {
+			if (this._sameRgb(rgb, center)) continue;
+			const key = this._rgbKey(rgb[0], rgb[1], rgb[2]);
+			counts.set(key, (counts.get(key) || 0) + 1);
+		}
+		
+		let bestKey = -1;
+		let bestCount = 0;
+		for (const [key, count] of counts) {
+			if (count > bestCount) {
+				bestCount = count;
+				bestKey = key;
+			}
+		}
+		
+		if (bestCount < params.minCardinalVotes) return null;
+		return this._unpackRgbKey(bestKey);
+	}
+	
+	/**
+	 * Fill single-pixel indentations along straight edges
+	 */
+	_getIndentFillReplacement(data, width, height, x, y, params) {
+		const center = this._getOpaqueRgb(data, width, height, x, y);
+		if (!center) return null;
+		
+		const cardinals = [
+			this._getOpaqueRgb(data, width, height, x, y - 1),
+			this._getOpaqueRgb(data, width, height, x + 1, y),
+			this._getOpaqueRgb(data, width, height, x, y + 1),
+			this._getOpaqueRgb(data, width, height, x - 1, y)
+		];
+		
+		const present = cardinals.filter(Boolean);
+		if (present.length < 3) return null;
+		
+		const counts = new Map();
+		for (const rgb of present) {
+			const key = this._rgbKey(rgb[0], rgb[1], rgb[2]);
+			counts.set(key, (counts.get(key) || 0) + 1);
+		}
+		
+		let modeKey = -1;
+		let modeCount = 0;
+		for (const [key, count] of counts) {
+			if (count > modeCount) {
+				modeCount = count;
+				modeKey = key;
+			}
+		}
+		
+		if (modeCount < 3) return null;
+		if (modeKey === this._rgbKey(center[0], center[1], center[2])) return null;
+		return this._unpackRgbKey(modeKey);
+	}
+	
+	/**
+	 * Fix common 2×2 corner jags on boundaries
+	 */
+	_getJagPatternReplacement(data, width, height, x, y) {
+		const center = this._getOpaqueRgb(data, width, height, x, y);
+		if (!center) return null;
+		
+		const offsets = [
+			[[1, 0], [0, 1], [1, 1]],
+			[[-1, 0], [0, 1], [-1, 1]],
+			[[1, 0], [0, -1], [1, -1]],
+			[[-1, 0], [0, -1], [-1, -1]]
+		];
+		
+		for (const [[ax, ay], [bx, by], [dx, dy]] of offsets) {
+			const a = this._getOpaqueRgb(data, width, height, x + ax, y + ay);
+			const b = this._getOpaqueRgb(data, width, height, x + bx, y + by);
+			const d = this._getOpaqueRgb(data, width, height, x + dx, y + dy);
+			
+			if (!a || !b || !d) continue;
+			if (!this._sameRgb(a, b) || !this._sameRgb(a, d)) continue;
+			if (this._sameRgb(center, a)) continue;
+			
+			return a;
+		}
+		
+		return null;
+	}
+	
+	/**
+	 * Straighten stair-step boundaries using a local lookahead window
+	 */
+	_getStairStepReplacement(data, width, height, x, y, params) {
+		const center = this._getOpaqueRgb(data, width, height, x, y);
+		if (!center) return null;
+		const centerKey = this._rgbKey(center[0], center[1], center[2]);
+		
+		const horizontal = this._getAxisStairReplacement(data, width, height, x, y, centerKey, params, true);
+		if (horizontal) return horizontal;
+		
+		return this._getAxisStairReplacement(data, width, height, x, y, centerKey, params, false);
+	}
+	
+	_getAxisStairReplacement(data, width, height, x, y, centerKey, params, horizontal) {
+		const range = params.range;
+		const tolerance = params.lineTolerance;
+		const samples = [];
+		
+		for (let delta = -range; delta <= range; delta++) {
+			if (delta === 0) continue;
+			
+			const px = horizontal ? x + delta : x;
+			const py = horizontal ? y : y + delta;
+			if (px < 0 || px >= width || py < 0 || py >= height) continue;
+			
+			const crossValues = [];
+			for (let offset = -range; offset <= range; offset++) {
+				const sx = horizontal ? px : px + offset;
+				const sy = horizontal ? py + offset : py;
+				const rgb = this._getOpaqueRgb(data, width, height, sx, sy);
+				if (!rgb) continue;
+				crossValues.push(this._rgbKey(rgb[0], rgb[1], rgb[2]));
+			}
+			
+			if (crossValues.length < 3) continue;
+			
+			const counts = new Map();
+			for (const key of crossValues) {
+				counts.set(key, (counts.get(key) || 0) + 1);
+			}
+			
+			let modeKey = -1;
+			let modeCount = 0;
+			for (const [key, count] of counts) {
+				if (count > modeCount) {
+					modeCount = count;
+					modeKey = key;
+				}
+			}
+			
+			if (modeCount >= Math.ceil(crossValues.length * 0.6)) {
+				samples.push(modeKey);
+			}
+		}
+		
+		if (samples.length < 2) return null;
+		
+		const lineCounts = new Map();
+		for (const key of samples) {
+			lineCounts.set(key, (lineCounts.get(key) || 0) + 1);
+		}
+		
+		let lineKey = -1;
+		let lineCount = 0;
+		for (const [key, count] of lineCounts) {
+			if (count > lineCount) {
+				lineCount = count;
+				lineKey = key;
+			}
+		}
+		
+		if (lineCount < Math.max(2, samples.length - tolerance)) return null;
+		if (lineKey === centerKey) return null;
+		
+		const up = this._getOpaqueRgb(data, width, height, x, y - 1);
+		const down = this._getOpaqueRgb(data, width, height, x, y + 1);
+		const left = this._getOpaqueRgb(data, width, height, x - 1, y);
+		const right = this._getOpaqueRgb(data, width, height, x + 1, y);
+		
+		const lineRgb = this._unpackRgbKey(lineKey);
+		const matchesLine = (rgb) => rgb && this._sameRgb(rgb, lineRgb);
+		const neighborLineVotes = [up, down, left, right].filter((rgb) => matchesLine(rgb)).length;
+		if (neighborLineVotes < 2) return null;
+		
+		return lineRgb;
 	}
 	
 	/**
@@ -1810,6 +2227,18 @@ class PNGToOTBMApp {
 					const level = Math.max(1, Math.min(CLEANUP_AGGRESSIVENESS_LABELS.length, parseInt(parsed.cleanupAggressiveness, 10) || DEFAULT_CLEANUP_AGGRESSIVENESS));
 					this.cleanupAggressiveness.value = String(level);
 				}
+				if (parsed.refineStrength !== undefined) {
+					const level = Math.max(1, Math.min(REFINE_STRENGTH_LABELS.length, parseInt(parsed.refineStrength, 10) || DEFAULT_REFINE_STRENGTH));
+					this.refineStrength.value = String(level);
+				}
+				if (parsed.refineRange !== undefined) {
+					const range = Math.max(2, Math.min(12, parseInt(parsed.refineRange, 10) || DEFAULT_REFINE_RANGE));
+					this.refineRange.value = String(range);
+				}
+				if (parsed.refinePasses !== undefined) {
+					const passes = Math.max(1, Math.min(8, parseInt(parsed.refinePasses, 10) || DEFAULT_REFINE_PASSES));
+					this.refinePasses.value = String(passes);
+				}
 			}
 		} catch (error) {
 			console.warn('Failed to load settings:', error);
@@ -1832,7 +2261,10 @@ class PNGToOTBMApp {
 				flipHorizontal: this.flipHorizontal.checked,
 				flipVertical: this.flipVertical.checked,
 				mapRotation: this._getMapRotation(),
-				cleanupAggressiveness: this._getCleanupAggressiveness()
+				cleanupAggressiveness: this._getCleanupAggressiveness(),
+				refineStrength: this._getRefineStrength(),
+				refineRange: this._getRefineRange(),
+				refinePasses: this._getRefinePasses()
 			};
 			localStorage.setItem('pngToOtbmSettings', JSON.stringify(settings));
 		} catch (error) {
