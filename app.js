@@ -30,6 +30,8 @@ class PNGToOTBMApp {
 		this.minZoom = 0.1; // Minimum zoom (10%)
 		this.maxZoom = 20.0; // Maximum zoom (2000%)
 		this.favorites = []; // Array of { id, name } favorite items
+		this.originalImageData = null; // Snapshot of image at upload/import
+		this.imageIsModified = false; // True after simplify/cleanup/refine edits
 		
 		// DOM Elements
 		this.fileInput = document.getElementById('fileInput');
@@ -88,6 +90,7 @@ class PNGToOTBMApp {
 		this.refineRangeValue = document.getElementById('refineRangeValue');
 		this.refinePasses = document.getElementById('refinePasses');
 		this.refinePassesValue = document.getElementById('refinePassesValue');
+		this.resetImageBtn = document.getElementById('resetImageBtn');
 		
 		// Canvas context
 		this.ctx = this.previewCanvas.getContext('2d');
@@ -199,6 +202,7 @@ class PNGToOTBMApp {
 			this._updateRefineSliderLabels();
 			this._saveSettings();
 		});
+		this.resetImageBtn.addEventListener('click', () => this._handleResetImage());
 		this.targetColorCount.addEventListener('change', () => this._saveSettings());
 		
 		// Color search
@@ -302,6 +306,7 @@ class PNGToOTBMApp {
 				this.zoomLevel = Math.max(fitScale, this.minZoom);
 				this._updatePreview();
 				const colorAnalysisResult = this._analyzeColors();
+				this._captureOriginalImageSnapshot();
 				if (colorAnalysisResult?.success || colorAnalysisResult?.tooManyColors) {
 					if (this.imageExceedsLimits) {
 						this._updateStatus(
@@ -378,6 +383,7 @@ class PNGToOTBMApp {
 				this._applyCanvasAsImage(canvas).then(() => {
 					this._zoomFit();
 					this._analyzeColors();
+					this._captureOriginalImageSnapshot();
 					this._updateStatus(
 						`✓ Converted ${file.name} → PNG (${info.width} × ${info.height}, ` +
 						`${info.tileCount.toLocaleString()} tiles, floor z=${info.z}, ` +
@@ -1955,9 +1961,74 @@ class PNGToOTBMApp {
 	}
 	
 	/**
+	 * Deep-copy ImageData so edits do not mutate the stored original snapshot.
+	 */
+	_cloneImageData(imageData) {
+		const clone = new ImageData(imageData.width, imageData.height);
+		clone.data.set(imageData.data);
+		return clone;
+	}
+	
+	/**
+	 * Store the current image as the original upload snapshot.
+	 */
+	_captureOriginalImageSnapshot() {
+		if (!this.imageData) {
+			this.originalImageData = null;
+			this.imageIsModified = false;
+		} else {
+			this.originalImageData = this._cloneImageData(this.imageData);
+			this.imageIsModified = false;
+		}
+		this._updateResetButton();
+	}
+	
+	/**
+	 * Enable or disable the reset button based on image load/modification state.
+	 */
+	_updateResetButton() {
+		if (!this.resetImageBtn) return;
+		const hasImage = !!this.image;
+		this.resetImageBtn.hidden = !hasImage;
+		this.resetImageBtn.disabled = !hasImage || !this.imageIsModified || !this.originalImageData;
+	}
+	
+	/**
+	 * Restore the image to its original upload/import state.
+	 */
+	async _handleResetImage() {
+		if (!this.originalImageData || !this.imageIsModified) return;
+		
+		this.resetImageBtn.disabled = true;
+		this._updateStatus('Resetting image…', '');
+		
+		try {
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			const restored = this._cloneImageData(this.originalImageData);
+			await this._applyImageDataToPreview(restored, { isReset: true });
+			const result = this._analyzeColors();
+			this._updatePreview();
+			if (result?.success) {
+				this._updateStatus('Image restored to original upload', 'success');
+			} else if (result?.tooManyColors) {
+				this._updateStatus(
+					'Image restored to original upload, but it still has too many colors to map.',
+					'warning'
+				);
+			} else {
+				this._updateStatus('Image restored to original upload', 'success');
+			}
+		} catch (error) {
+			this._updateStatus(`Reset failed: ${error.message}`, 'error');
+		} finally {
+			this._updateResetButton();
+		}
+	}
+	
+	/**
 	 * Replace working image from ImageData and refresh preview bitmap
 	 */
-	_applyImageDataToPreview(imageData) {
+	_applyImageDataToPreview(imageData, { isReset = false } = {}) {
 		return new Promise((resolve, reject) => {
 			const canvas = document.createElement('canvas');
 			canvas.width = imageData.width;
@@ -1969,6 +2040,8 @@ class PNGToOTBMApp {
 			img.onload = () => {
 				this.image = img;
 				this.imageData = imageData;
+				this.imageIsModified = !isReset;
+				this._updateResetButton();
 				resolve();
 			};
 			img.onerror = () => reject(new Error('Failed to update preview image'));

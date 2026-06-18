@@ -157,7 +157,9 @@ body {
 	padding: 10px 16px;
 	border-bottom: 1px solid var(--border-color);
 	display: flex;
-	justify-content: flex-start;
+	justify-content: space-between;
+	align-items: center;
+	gap: 12px;
 }
 
 .zoom-controls {
