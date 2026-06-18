@@ -74,15 +74,12 @@ class PNGToOTBMApp {
 		this.importFavoritesBtn = document.getElementById('importFavoritesBtn');
 		this.favoritesList = document.getElementById('favoritesList');
 		this.favoritesEmptyState = document.getElementById('favoritesEmptyState');
-		this.simplifySection = document.getElementById('simplifySection');
 		this.simplifyHint = document.getElementById('simplifyHint');
 		this.targetColorCount = document.getElementById('targetColorCount');
 		this.simplifyColorsBtn = document.getElementById('simplifyColorsBtn');
-		this.cleanupSection = document.getElementById('cleanupSection');
 		this.smartCleanupBtn = document.getElementById('smartCleanupBtn');
 		this.cleanupAggressiveness = document.getElementById('cleanupAggressiveness');
 		this.cleanupAggressivenessValue = document.getElementById('cleanupAggressivenessValue');
-		this.refineSection = document.getElementById('refineSection');
 		this.refineEdgesBtn = document.getElementById('refineEdgesBtn');
 		this.refineStrength = document.getElementById('refineStrength');
 		this.refineStrengthValue = document.getElementById('refineStrengthValue');
@@ -91,7 +88,12 @@ class PNGToOTBMApp {
 		this.refinePasses = document.getElementById('refinePasses');
 		this.refinePassesValue = document.getElementById('refinePassesValue');
 		this.resetImageBtn = document.getElementById('resetImageBtn');
-		
+		this.toolsSection = document.getElementById('toolsSection');
+		this.simplifySection = document.getElementById('simplifySection');
+		this.toolTabs = Array.from(document.querySelectorAll('.tools-tab'));
+		this.toolPanels = Array.from(document.querySelectorAll('.tool-panel'));
+		this.activeTool = 'cleanup';
+
 		// Canvas context
 		this.ctx = this.previewCanvas.getContext('2d');
 		
@@ -182,6 +184,9 @@ class PNGToOTBMApp {
 		this.mapRotation.addEventListener('change', () => {
 			this._onMapScaleChange();
 			this._saveSettings();
+		});
+		this.toolTabs.forEach(tab => {
+			tab.addEventListener('click', () => this._setActiveTool(tab.dataset.tool));
 		});
 		this.simplifyColorsBtn.addEventListener('click', () => this._handleSimplifyColors());
 		this.smartCleanupBtn.addEventListener('click', () => this._handleSmartCleanup());
@@ -1166,33 +1171,47 @@ class PNGToOTBMApp {
 	}
 	
 	/**
-	 * Show or hide the smart-cleanup panel when an image is loaded
+	 * Switch the active image-tool tab
+	 */
+	_setActiveTool(tool) {
+		this.activeTool = tool;
+		this.toolTabs.forEach(tab => {
+			const active = tab.dataset.tool === tool;
+			tab.classList.toggle('is-active', active);
+			tab.setAttribute('aria-selected', active ? 'true' : 'false');
+		});
+		this.toolPanels.forEach(panel => {
+			panel.hidden = panel.dataset.tool !== tool;
+		});
+	}
+
+	/**
+	 * Show or hide the image-tools section when an image is loaded
 	 */
 	_updateCleanupPanel() {
-		this.cleanupSection.hidden = !this.image;
+		this.toolsSection.hidden = !this.image;
 		this.smartCleanupBtn.disabled = !this.image || !this.imageData;
 	}
-	
+
 	/**
-	 * Show or hide the refine-edges panel when an image is loaded
+	 * Enable or disable the refine-edges action
 	 */
 	_updateRefinePanel() {
-		this.refineSection.hidden = !this.image;
 		this.refineEdgesBtn.disabled = !this.image || !this.imageData;
 	}
-	
+
 	/**
-	 * Show or hide the simplify-colors panel based on unique color count
+	 * Show or hide the simplify section (bottom of color mappings) based on unique color count
 	 */
 	_updateSimplifyPanel() {
 		if (!this.image) {
 			this.simplifySection.hidden = true;
 			return;
 		}
-		
+
 		const show = this.uniqueColorCount > RECOMMENDED_MAX_COLORS || this.requiresSimplify;
 		this.simplifySection.hidden = !show;
-		
+
 		if (!show) return;
 		
 		const maxTarget = Math.max(2, Math.min(HARD_MAX_COLORS, this.uniqueColorCount - 1));

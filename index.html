@@ -48,6 +48,17 @@
 							</div>
 						</div>
 					</div>
+
+					<div class="simplify-footer" id="simplifySection" hidden>
+						<p class="simplify-hint" id="simplifyHint"></p>
+						<div class="simplify-row">
+							<label for="targetColorCount">Target colors</label>
+							<input type="number" id="targetColorCount" value="30" min="2" max="256" class="input-small" aria-label="Number of colors after simplification">
+							<button type="button" class="btn btn-primary" id="simplifyColorsBtn" aria-label="Reduce image to target number of colors">
+								Simplify
+							</button>
+						</div>
+					</div>
 				</section>
 
 				<!-- Favorites Panel -->
@@ -129,116 +140,7 @@
 					<h2>Settings</h2>
 				</div>
 
-				<div class="settings-panel-body">
-					<div class="cleanup-section" id="cleanupSection" hidden>
-						<p class="cleanup-hint">Remove stray pixels that are outnumbered by surrounding colors in each 3×3 area.</p>
-						<div class="setting-row cleanup-aggressiveness-row">
-							<label for="cleanupAggressiveness">Aggressiveness</label>
-							<span class="cleanup-aggressiveness-value" id="cleanupAggressivenessValue">Balanced</span>
-						</div>
-						<input
-							type="range"
-							id="cleanupAggressiveness"
-							class="cleanup-aggressiveness-slider"
-							min="1"
-							max="5"
-							step="1"
-							value="3"
-							aria-valuemin="1"
-							aria-valuemax="5"
-							aria-valuenow="3"
-							aria-label="Smart cleanup aggressiveness"
-						>
-						<div class="cleanup-aggressiveness-scale" aria-hidden="true">
-							<span>Gentle</span>
-							<span>Maximum</span>
-						</div>
-						<button type="button" class="btn btn-primary cleanup-btn" id="smartCleanupBtn" aria-label="Remove lone pixels surrounded by another color">
-							Smart cleanup
-						</button>
-					</div>
-
-					<div class="refine-section" id="refineSection" hidden>
-						<p class="refine-hint">Straighten jagged stair-step edges and remove thin protrusions along color boundaries.</p>
-						<div class="setting-row refine-strength-row">
-							<label for="refineStrength">Strength</label>
-							<span class="refine-strength-value" id="refineStrengthValue">Balanced</span>
-						</div>
-						<input
-							type="range"
-							id="refineStrength"
-							class="refine-slider"
-							min="1"
-							max="5"
-							step="1"
-							value="3"
-							aria-valuemin="1"
-							aria-valuemax="5"
-							aria-valuenow="3"
-							aria-label="Edge refinement strength"
-						>
-						<div class="refine-slider-scale" aria-hidden="true">
-							<span>Gentle</span>
-							<span>Maximum</span>
-						</div>
-						<div class="setting-row refine-range-row">
-							<label for="refineRange">Lookahead</label>
-							<span class="refine-range-value" id="refineRangeValue">5 px</span>
-						</div>
-						<input
-							type="range"
-							id="refineRange"
-							class="refine-slider"
-							min="2"
-							max="12"
-							step="1"
-							value="5"
-							aria-valuemin="2"
-							aria-valuemax="12"
-							aria-valuenow="5"
-							aria-label="Edge refinement lookahead distance"
-						>
-						<div class="refine-slider-scale" aria-hidden="true">
-							<span>Short</span>
-							<span>Long</span>
-						</div>
-						<div class="setting-row refine-passes-row">
-							<label for="refinePasses">Passes</label>
-							<span class="refine-passes-value" id="refinePassesValue">3</span>
-						</div>
-						<input
-							type="range"
-							id="refinePasses"
-							class="refine-slider"
-							min="1"
-							max="8"
-							step="1"
-							value="3"
-							aria-valuemin="1"
-							aria-valuemax="8"
-							aria-valuenow="3"
-							aria-label="Edge refinement pass count"
-						>
-						<div class="refine-slider-scale" aria-hidden="true">
-							<span>Subtle</span>
-							<span>Heavy</span>
-						</div>
-						<button type="button" class="btn btn-primary refine-btn" id="refineEdgesBtn" aria-label="Straighten jagged edges in the image">
-							Refine edges
-						</button>
-					</div>
-
-					<div class="simplify-section" id="simplifySection" hidden>
-						<p class="simplify-hint" id="simplifyHint"></p>
-						<div class="setting-row">
-							<label for="targetColorCount">Target colors</label>
-							<input type="number" id="targetColorCount" value="30" min="2" max="256" class="input-small" aria-label="Number of colors after simplification">
-						</div>
-						<button type="button" class="btn btn-primary simplify-btn" id="simplifyColorsBtn" aria-label="Reduce image to target number of colors">
-							Simplify colors
-						</button>
-					</div>
-
+				<div class="settings-body">
 					<div class="settings-section">
 						<div class="setting-row">
 							<label for="mapScale">Map scale</label>
@@ -256,49 +158,143 @@
 							</select>
 						</div>
 
-						<div class="setting-row">
-							<label for="transparentTileId">Transparent tile ID</label>
-							<input type="number" id="transparentTileId" value="0" min="0" max="65535" class="input-small" placeholder="0 = skip" aria-label="Tile ID for transparent pixels">
-						</div>
-
-						<div class="setting-row">
-							<label for="zLevel">Z level</label>
-							<input type="number" id="zLevel" value="7" min="0" max="15" class="input-small" aria-label="Floor level (0-15)">
-						</div>
-
-						<div class="setting-row">
-							<label for="offsetX">Offset X</label>
-							<input type="number" id="offsetX" value="0" min="0" class="input-small" aria-label="X coordinate offset">
-						</div>
-
-						<div class="setting-row">
-							<label for="offsetY">Offset Y</label>
-							<input type="number" id="offsetY" value="0" min="0" class="input-small" aria-label="Y coordinate offset">
+						<div class="settings-grid settings-grid--pairs">
+							<div class="setting-row">
+								<label for="transparentTileId">Transparent tile</label>
+								<input type="number" id="transparentTileId" value="0" min="0" max="65535" class="input-small" placeholder="0 = skip" aria-label="Tile ID for transparent pixels">
+							</div>
+							<div class="setting-row">
+								<label for="zLevel">Z level</label>
+								<input type="number" id="zLevel" value="7" min="0" max="15" class="input-small" aria-label="Floor level (0-15)">
+							</div>
+							<div class="setting-row">
+								<label for="offsetX">Offset X</label>
+								<input type="number" id="offsetX" value="0" min="0" class="input-small" aria-label="X coordinate offset">
+							</div>
+							<div class="setting-row">
+								<label for="offsetY">Offset Y</label>
+								<input type="number" id="offsetY" value="0" min="0" class="input-small" aria-label="Y coordinate offset">
+							</div>
 						</div>
 					</div>
 
+					<div class="tools-section" id="toolsSection" hidden>
+						<div class="tools-tabs" role="tablist" aria-label="Image tools">
+							<button type="button" class="tools-tab is-active" id="cleanupTab" data-tool="cleanup" role="tab" aria-selected="true">Cleanup</button>
+							<button type="button" class="tools-tab" id="refineTab" data-tool="refine" role="tab" aria-selected="false">Refine</button>
+						</div>
+
+						<div class="tool-panel" id="cleanupSection" data-tool="cleanup" role="tabpanel">
+							<p class="tool-hint">Remove stray pixels outnumbered by their 3×3 neighbours.</p>
+							<div class="setting-row">
+								<label for="cleanupAggressiveness">Aggressiveness</label>
+								<span class="tool-value" id="cleanupAggressivenessValue">Balanced</span>
+							</div>
+							<input
+								type="range"
+								id="cleanupAggressiveness"
+								class="tool-slider"
+								min="1"
+								max="5"
+								step="1"
+								value="3"
+								aria-valuemin="1"
+								aria-valuemax="5"
+								aria-valuenow="3"
+								aria-label="Smart cleanup aggressiveness"
+							>
+							<button type="button" class="btn btn-primary tool-btn" id="smartCleanupBtn" aria-label="Remove lone pixels surrounded by another color">
+								Smart cleanup
+							</button>
+						</div>
+
+						<div class="tool-panel" id="refineSection" data-tool="refine" role="tabpanel" hidden>
+							<p class="tool-hint">Smooth jagged edges and trim thin protrusions.</p>
+							<div class="setting-row">
+								<label for="refineStrength">Strength</label>
+								<span class="tool-value" id="refineStrengthValue">Balanced</span>
+							</div>
+							<input
+								type="range"
+								id="refineStrength"
+								class="tool-slider"
+								min="1"
+								max="5"
+								step="1"
+								value="3"
+								aria-valuemin="1"
+								aria-valuemax="5"
+								aria-valuenow="3"
+								aria-label="Edge refinement strength"
+							>
+							<div class="setting-row">
+								<label for="refineRange">Lookahead</label>
+								<span class="tool-value" id="refineRangeValue">5 px</span>
+							</div>
+							<input
+								type="range"
+								id="refineRange"
+								class="tool-slider"
+								min="2"
+								max="12"
+								step="1"
+								value="5"
+								aria-valuemin="2"
+								aria-valuemax="12"
+								aria-valuenow="5"
+								aria-label="Edge refinement lookahead distance"
+							>
+							<div class="setting-row">
+								<label for="refinePasses">Passes</label>
+								<span class="tool-value" id="refinePassesValue">3</span>
+							</div>
+							<input
+								type="range"
+								id="refinePasses"
+								class="tool-slider"
+								min="1"
+								max="8"
+								step="1"
+								value="3"
+								aria-valuemin="1"
+								aria-valuemax="8"
+								aria-valuenow="3"
+								aria-label="Edge refinement pass count"
+							>
+							<button type="button" class="btn btn-primary tool-btn" id="refineEdgesBtn" aria-label="Straighten jagged edges in the image">
+								Refine edges
+							</button>
+						</div>
+					</div>
+				</div>
+
+				<div class="settings-panel-footer">
 					<div class="generate-options">
-						<label class="generate-option-label" for="flipHorizontal">
-							<input type="checkbox" id="flipHorizontal" aria-label="Flip map horizontally on generate">
-							Flip map horizontally
-						</label>
-						<label class="generate-option-label" for="flipVertical">
-							<input type="checkbox" id="flipVertical" aria-label="Flip map vertically on generate">
-							Flip map vertically
-						</label>
-						<label class="generate-option-label" for="mapRotation">
-							Rotate map
-							<select id="mapRotation" aria-label="Rotate map on generate">
-								<option value="0">0°</option>
-								<option value="90">90°</option>
-								<option value="180">180°</option>
-								<option value="270">270°</option>
-							</select>
-						</label>
-						<label class="ignore-limits-label" for="ignoreSizeLimits">
-							<input type="checkbox" id="ignoreSizeLimits" aria-label="Ignore pixel count and dimension limits">
-							Ignore size limits
-						</label>
+						<div class="generate-options-row">
+							<label class="generate-option-label" for="flipHorizontal">
+								<input type="checkbox" id="flipHorizontal" aria-label="Flip map horizontally on generate">
+								Flip horizontal
+							</label>
+							<label class="generate-option-label" for="flipVertical">
+								<input type="checkbox" id="flipVertical" aria-label="Flip map vertically on generate">
+								Flip vertical
+							</label>
+						</div>
+						<div class="generate-options-row">
+							<label class="generate-option-label" for="mapRotation">
+								Rotate
+								<select id="mapRotation" aria-label="Rotate map on generate">
+									<option value="0">0°</option>
+									<option value="90">90°</option>
+									<option value="180">180°</option>
+									<option value="270">270°</option>
+								</select>
+							</label>
+							<label class="ignore-limits-label" for="ignoreSizeLimits">
+								<input type="checkbox" id="ignoreSizeLimits" aria-label="Ignore pixel count and dimension limits">
+								Ignore limits
+							</label>
+						</div>
 					</div>
 
 					<div class="generate-actions">
