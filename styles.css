@@ -781,6 +781,17 @@ input[type="number"].color-id-input {
 	cursor: pointer;
 }
 
+.generate-option-label select {
+	font-family: var(--font-mono);
+	font-size: 12px;
+	padding: 2px 4px;
+	background: var(--bg-input);
+	border: 1px solid var(--border-color);
+	border-radius: 4px;
+	color: var(--text-primary);
+	cursor: pointer;
+}
+
 .btn-success {
 	background: var(--success);
 	color: #10120f;

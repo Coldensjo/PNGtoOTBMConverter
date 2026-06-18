@@ -41,6 +41,7 @@ class PNGToOTBMApp {
 		this.ignoreSizeLimits = document.getElementById('ignoreSizeLimits');
 		this.flipHorizontal = document.getElementById('flipHorizontal');
 		this.flipVertical = document.getElementById('flipVertical');
+		this.mapRotation = document.getElementById('mapRotation');
 		this.status = document.getElementById('status');
 		this.clientVersion = document.getElementById('clientVersion');
 		this.transparentTileId = document.getElementById('transparentTileId');
@@ -155,6 +156,10 @@ class PNGToOTBMApp {
 		this.ignoreSizeLimits.addEventListener('change', () => this._updateGenerateButtonState());
 		this.flipHorizontal.addEventListener('change', () => this._saveSettings());
 		this.flipVertical.addEventListener('change', () => this._saveSettings());
+		this.mapRotation.addEventListener('change', () => {
+			this._onMapScaleChange();
+			this._saveSettings();
+		});
 		this.simplifyColorsBtn.addEventListener('click', () => this._handleSimplifyColors());
 		this.targetColorCount.addEventListener('change', () => this._saveSettings());
 		
@@ -243,8 +248,8 @@ class PNGToOTBMApp {
 			
 			img.onload = () => {
 				this.image = img;
-				// Evaluate limits against the scaled output, not the raw image
-				const { width: outW, height: outH } = this._getOutputDimensions();
+				// Evaluate limits against the scaled output (including rotation), not the raw image
+				const { width: outW, height: outH } = this._getMapDimensions();
 				const complexityCheck = this._checkImageComplexity(outW, outH);
 				this.imageExceedsLimits = !complexityCheck.valid;
 
@@ -592,6 +597,42 @@ class PNGToOTBMApp {
 	}
 
 	/**
+	 * Clockwise rotation applied when generating the map (0, 90, 180, or 270).
+	 */
+	_getMapRotation() {
+		const rotation = parseInt(this.mapRotation.value, 10);
+		return [0, 90, 180, 270].includes(rotation) ? rotation : 0;
+	}
+
+	/**
+	 * Output map dimensions after scale and rotation.
+	 */
+	_getMapDimensions() {
+		const { width, height, scale } = this._getOutputDimensions();
+		const rotation = this._getMapRotation();
+		if (rotation === 90 || rotation === 270) {
+			return { width: height, height: width, scale, rotation };
+		}
+		return { width, height, scale, rotation };
+	}
+
+	/**
+	 * Map output tile coordinates to scaled image coordinates before flips.
+	 */
+	_outputToLogical(ox, oy, mapW, mapH, rotation) {
+		switch (rotation) {
+			case 90:
+				return { lx: oy, ly: mapW - 1 - ox };
+			case 180:
+				return { lx: mapW - 1 - ox, ly: mapH - 1 - oy };
+			case 270:
+				return { lx: mapH - 1 - oy, ly: ox };
+			default:
+				return { lx: ox, ly: oy };
+		}
+	}
+
+	/**
 	 * Show the resulting map size (in tiles) for the current scale, and warn
 	 * if it still exceeds the limits.
 	 */
@@ -603,11 +644,12 @@ class PNGToOTBMApp {
 			return;
 		}
 
-		const { width, height, scale } = this._getOutputDimensions();
+		const { width, height, scale, rotation } = this._getMapDimensions();
+		const rotationNote = rotation ? `, rotated ${rotation}°` : '';
 		if (scale >= 100) {
-			this.mapScaleHint.textContent = `Map: ${width} × ${height} tiles (full size)`;
+			this.mapScaleHint.textContent = `Map: ${width} × ${height} tiles (full size${rotationNote})`;
 		} else {
-			this.mapScaleHint.textContent = `Map: ${width} × ${height} tiles (${this.image.width} × ${this.image.height} at ${scale}%)`;
+			this.mapScaleHint.textContent = `Map: ${width} × ${height} tiles (${this.image.width} × ${this.image.height} at ${scale}%${rotationNote})`;
 		}
 	}
 
@@ -616,7 +658,7 @@ class PNGToOTBMApp {
 	 */
 	_onMapScaleChange() {
 		if (this.image) {
-			const { width, height } = this._getOutputDimensions();
+			const { width, height } = this._getMapDimensions();
 			this.imageExceedsLimits = !this._checkImageComplexity(width, height).valid;
 		}
 		this._updateMapScaleHint();
@@ -1318,9 +1360,10 @@ class PNGToOTBMApp {
 			// Source image dimensions (unchanged) and scaled output map dimensions
 			const srcWidth = this.image.width;
 			const srcHeight = this.image.height;
-			const { width, height, scale } = this._getOutputDimensions();
+			const scaled = this._getOutputDimensions();
+			const { width: mapW, height: mapH, scale, rotation } = this._getMapDimensions();
 
-			const complexityCheck = this._checkImageComplexity(width, height);
+			const complexityCheck = this._checkImageComplexity(mapW, mapH);
 			if (!complexityCheck.valid && !this.ignoreSizeLimits.checked) {
 				this._updateStatus(complexityCheck.error, 'error');
 				return;
@@ -1353,7 +1396,7 @@ class PNGToOTBMApp {
 			const offY = Math.max(0, parseInt(this.offsetY.value) || 0);
 			
 			// Validate offsets don't cause overflow
-			if (offX + width > 65535 || offY + height > 65535) {
+			if (offX + mapW > 65535 || offY + mapH > 65535) {
 				this._updateStatus('Error: Offset + image size exceeds maximum map dimensions (65535)', 'error');
 				return;
 			}
@@ -1382,8 +1425,8 @@ class PNGToOTBMApp {
 			
 			// Create OTBM writer with client-specific versions
 			const writer = new OTBMWriter(
-				width + offX,
-				height + offY,
+				mapW + offX,
+				mapH + offY,
 				`PNG to OTBM Converted Map (${clientConfig.name})`,
 				clientConfig.otbmVersion,
 				otbVersion.version,
@@ -1394,7 +1437,7 @@ class PNGToOTBMApp {
 			const pixels = this.imageData.data;
 			let tileCount = 0;
 			let transparentTileCount = 0;
-			const totalPixels = width * height;
+			const totalPixels = mapW * mapH;
 			let processedPixels = 0;
 			
 			// Show progress for large images
@@ -1408,12 +1451,17 @@ class PNGToOTBMApp {
 			const downscaled = scale < 100;
 			const flipH = this.flipHorizontal.checked;
 			const flipV = this.flipVertical.checked;
-			for (let y = 0; y < height; y++) {
-				const sy = downscaled ? Math.min(srcHeight - 1, Math.floor(y * srcHeight / height)) : y;
-				const tileY = (flipV ? height - 1 - y : y) + offY;
-				for (let x = 0; x < width; x++) {
-					const sx = downscaled ? Math.min(srcWidth - 1, Math.floor(x * srcWidth / width)) : x;
-					const tileX = (flipH ? width - 1 - x : x) + offX;
+			for (let oy = 0; oy < mapH; oy++) {
+				const tileY = (flipV ? mapH - 1 - oy : oy) + offY;
+				for (let ox = 0; ox < mapW; ox++) {
+					const tileX = (flipH ? mapW - 1 - ox : ox) + offX;
+					const { lx, ly } = this._outputToLogical(ox, oy, mapW, mapH, rotation);
+					const sy = downscaled
+						? Math.min(srcHeight - 1, Math.floor(ly * srcHeight / scaled.height))
+						: ly;
+					const sx = downscaled
+						? Math.min(srcWidth - 1, Math.floor(lx * srcWidth / scaled.width))
+						: lx;
 					const i = (sy * srcWidth + sx) * 4;
 					const r = pixels[i];
 					const g = pixels[i + 1];
@@ -1465,7 +1513,7 @@ class PNGToOTBMApp {
 				statusMsg += `, ${transparentTileCount.toLocaleString()} transparent`;
 			}
 			if (scale < 100) {
-				statusMsg += `, ${width} × ${height} map @ ${scale}%`;
+				statusMsg += `, ${mapW} × ${mapH} map @ ${scale}%`;
 			}
 			statusMsg += `, Client: ${clientConfig.name})`;
 			this._updateStatus(statusMsg, 'success');
@@ -1540,6 +1588,12 @@ class PNGToOTBMApp {
 				}
 				if (parsed.flipHorizontal !== undefined) this.flipHorizontal.checked = !!parsed.flipHorizontal;
 				if (parsed.flipVertical !== undefined) this.flipVertical.checked = !!parsed.flipVertical;
+				if (parsed.mapRotation !== undefined) {
+					const rotation = parseInt(parsed.mapRotation, 10);
+					if ([0, 90, 180, 270].includes(rotation)) {
+						this.mapRotation.value = String(rotation);
+					}
+				}
 			}
 		} catch (error) {
 			console.warn('Failed to load settings:', error);
@@ -1560,7 +1614,8 @@ class PNGToOTBMApp {
 				targetColorCount: parseInt(this.targetColorCount.value, 10) || RECOMMENDED_MAX_COLORS,
 				mapScale: this._getMapScale(),
 				flipHorizontal: this.flipHorizontal.checked,
-				flipVertical: this.flipVertical.checked
+				flipVertical: this.flipVertical.checked,
+				mapRotation: this._getMapRotation()
 			};
 			localStorage.setItem('pngToOtbmSettings', JSON.stringify(settings));
 		} catch (error) {
