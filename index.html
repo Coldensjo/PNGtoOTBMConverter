@@ -20,7 +20,63 @@
 
 		<!-- Main Content -->
 		<main class="main">
-			<!-- Left Panel - Preview -->
+			<!-- Left Panels - Color Mappings & Favorites -->
+			<div class="left-panels">
+				<!-- Color Mappings Panel -->
+				<section class="panel mappings-panel">
+					<div class="panel-header">
+						<h2>Color mappings</h2>
+						<span class="color-count" id="colorCount">0 colors</span>
+					</div>
+
+					<div class="color-toolbar">
+						<input type="text" id="colorSearch" class="color-search" placeholder="Search colors..." autocomplete="off" aria-label="Search colors by hex, RGB, or ID">
+						<div class="toolbar-buttons">
+							<button class="btn btn-small" id="exportMappingsBtn" title="Export color mappings to JSON" aria-label="Export color mappings">
+								Export
+							</button>
+							<button class="btn btn-small" id="importMappingsBtn" title="Import color mappings from JSON" aria-label="Import color mappings">
+								Import
+							</button>
+						</div>
+					</div>
+
+					<div class="color-list-container">
+						<div class="color-list" id="colorList">
+							<div class="empty-state" id="emptyState">
+								<p>Import an image to<br>detect colors</p>
+							</div>
+						</div>
+					</div>
+				</section>
+
+				<!-- Favorites Panel -->
+				<section class="panel favorites-panel">
+					<div class="panel-header">
+						<h2>Favorites</h2>
+						<button class="btn btn-small btn-icon-only" id="addFavoriteBtn" title="Add favorite" aria-label="Add favorite">
+							+
+						</button>
+					</div>
+
+					<div class="favorites-toolbar">
+						<button class="btn btn-small" id="exportFavoritesBtn" title="Export favorites to JSON" aria-label="Export favorites">
+							Export
+						</button>
+						<button class="btn btn-small" id="importFavoritesBtn" title="Import favorites from JSON" aria-label="Import favorites">
+							Import
+						</button>
+					</div>
+
+					<div class="favorites-list" id="favoritesList">
+						<div class="empty-state" id="favoritesEmptyState">
+							<p>No favorites yet</p>
+						</div>
+					</div>
+				</section>
+			</div>
+
+			<!-- Center Panel - Preview -->
 			<section class="panel preview-panel">
 				<div class="panel-header">
 					<h2>Image preview</h2>
@@ -64,35 +120,13 @@
 				</div>
 			</section>
 
-			<!-- Right Panels - Controls -->
-			<div class="right-panels">
-				<!-- Color Mappings Panel -->
-				<section class="panel control-panel">
-					<div class="panel-header">
-						<h2>Color mappings</h2>
-						<span class="color-count" id="colorCount">0 colors</span>
-					</div>
+			<!-- Right Panel - Settings & Actions -->
+			<section class="panel settings-panel">
+				<div class="panel-header">
+					<h2>Settings</h2>
+				</div>
 
-					<div class="color-toolbar">
-						<input type="text" id="colorSearch" class="color-search" placeholder="Search colors..." autocomplete="off" aria-label="Search colors by hex, RGB, or ID">
-						<div class="toolbar-buttons">
-							<button class="btn btn-small" id="exportMappingsBtn" title="Export color mappings to JSON" aria-label="Export color mappings">
-								Export
-							</button>
-							<button class="btn btn-small" id="importMappingsBtn" title="Import color mappings from JSON" aria-label="Import color mappings">
-								Import
-							</button>
-						</div>
-					</div>
-
-					<div class="color-list-container">
-						<div class="color-list" id="colorList">
-							<div class="empty-state" id="emptyState">
-								<p>Import an image to<br>detect colors</p>
-							</div>
-						</div>
-					</div>
-
+				<div class="settings-panel-body">
 					<div class="simplify-section" id="simplifySection" hidden>
 						<p class="simplify-hint" id="simplifyHint"></p>
 						<div class="setting-row">
@@ -105,108 +139,83 @@
 					</div>
 
 					<div class="settings-section">
-					<div class="setting-row">
-						<label for="mapScale">Map scale</label>
-						<div class="map-scale-control">
-							<input type="number" id="mapScale" value="100" min="1" max="100" step="1" class="input-small" aria-label="Output map scale percentage">
-							<span class="map-scale-unit">%</span>
+						<div class="setting-row">
+							<label for="mapScale">Map scale</label>
+							<div class="map-scale-control">
+								<input type="number" id="mapScale" value="100" min="1" max="100" step="1" class="input-small" aria-label="Output map scale percentage">
+								<span class="map-scale-unit">%</span>
+							</div>
+						</div>
+						<p class="map-scale-hint" id="mapScaleHint"></p>
+
+						<div class="setting-row">
+							<label for="clientVersion">Client version</label>
+							<select id="clientVersion" class="input-select" aria-label="Select Tibia client version">
+								<!-- Options will be populated by JavaScript -->
+							</select>
+						</div>
+
+						<div class="setting-row">
+							<label for="transparentTileId">Transparent tile ID</label>
+							<input type="number" id="transparentTileId" value="0" min="0" max="65535" class="input-small" placeholder="0 = skip" aria-label="Tile ID for transparent pixels">
+						</div>
+
+						<div class="setting-row">
+							<label for="zLevel">Z level</label>
+							<input type="number" id="zLevel" value="7" min="0" max="15" class="input-small" aria-label="Floor level (0-15)">
+						</div>
+
+						<div class="setting-row">
+							<label for="offsetX">Offset X</label>
+							<input type="number" id="offsetX" value="0" min="0" class="input-small" aria-label="X coordinate offset">
+						</div>
+
+						<div class="setting-row">
+							<label for="offsetY">Offset Y</label>
+							<input type="number" id="offsetY" value="0" min="0" class="input-small" aria-label="Y coordinate offset">
 						</div>
 					</div>
-					<p class="map-scale-hint" id="mapScaleHint"></p>
 
-					<div class="setting-row">
-						<label for="clientVersion">Client version</label>
-						<select id="clientVersion" class="input-select" aria-label="Select Tibia client version">
-							<!-- Options will be populated by JavaScript -->
-						</select>
+					<div class="generate-options">
+						<label class="generate-option-label" for="flipHorizontal">
+							<input type="checkbox" id="flipHorizontal" aria-label="Flip map horizontally on generate">
+							Flip map horizontally
+						</label>
+						<label class="generate-option-label" for="flipVertical">
+							<input type="checkbox" id="flipVertical" aria-label="Flip map vertically on generate">
+							Flip map vertically
+						</label>
+						<label class="generate-option-label" for="mapRotation">
+							Rotate map
+							<select id="mapRotation" aria-label="Rotate map on generate">
+								<option value="0">0°</option>
+								<option value="90">90°</option>
+								<option value="180">180°</option>
+								<option value="270">270°</option>
+							</select>
+						</label>
+						<label class="ignore-limits-label" for="ignoreSizeLimits">
+							<input type="checkbox" id="ignoreSizeLimits" aria-label="Ignore pixel count and dimension limits">
+							Ignore size limits
+						</label>
 					</div>
-					
-					<div class="setting-row">
-						<label for="transparentTileId">Transparent tile ID</label>
-						<input type="number" id="transparentTileId" value="0" min="0" max="65535" class="input-small" placeholder="0 = skip" aria-label="Tile ID for transparent pixels">
-					</div>
-					
-					<div class="setting-row">
-						<label for="zLevel">Z level</label>
-						<input type="number" id="zLevel" value="7" min="0" max="15" class="input-small" aria-label="Floor level (0-15)">
-					</div>
-					
-					<div class="setting-row">
-						<label for="offsetX">Offset X</label>
-						<input type="number" id="offsetX" value="0" min="0" class="input-small" aria-label="X coordinate offset">
-					</div>
-					
-					<div class="setting-row">
-						<label for="offsetY">Offset Y</label>
-						<input type="number" id="offsetY" value="0" min="0" class="input-small" aria-label="Y coordinate offset">
-					</div>
-				</div>
 
-				<div class="generate-actions">
-					<button class="btn btn-success" id="generateBtn" disabled aria-label="Generate OTBM file">
-						Generate
-					</button>
-					<label class="ignore-limits-label" for="ignoreSizeLimits">
-						<input type="checkbox" id="ignoreSizeLimits" aria-label="Ignore pixel count and dimension limits">
-						Ignore size limits
-					</label>
-				</div>
-
-				<div class="generate-options">
-					<label class="generate-option-label" for="flipHorizontal">
-						<input type="checkbox" id="flipHorizontal" aria-label="Flip map horizontally on generate">
-						Flip map horizontally
-					</label>
-					<label class="generate-option-label" for="flipVertical">
-						<input type="checkbox" id="flipVertical" aria-label="Flip map vertically on generate">
-						Flip map vertically
-					</label>
-					<label class="generate-option-label" for="mapRotation">
-						Rotate map
-						<select id="mapRotation" aria-label="Rotate map on generate">
-							<option value="0">0°</option>
-							<option value="90">90°</option>
-							<option value="180">180°</option>
-							<option value="270">270°</option>
-						</select>
-					</label>
-				</div>
-
-				<div class="progress-container" id="progressContainer" style="display: none;">
-					<div class="progress-bar">
-						<div class="progress-fill" id="progressFill"></div>
+					<div class="generate-actions">
+						<button class="btn btn-success" id="generateBtn" disabled aria-label="Generate OTBM file">
+							Generate
+						</button>
 					</div>
-					<div class="progress-text" id="progressText">0%</div>
-				</div>
+
+					<div class="progress-container" id="progressContainer" style="display: none;">
+						<div class="progress-bar">
+							<div class="progress-fill" id="progressFill"></div>
+						</div>
+						<div class="progress-text" id="progressText">0%</div>
+					</div>
 
 					<div class="status" id="status"></div>
-				</section>
-
-				<!-- Favorites Panel -->
-				<section class="panel favorites-panel">
-					<div class="panel-header">
-						<h2>Favorites</h2>
-						<button class="btn btn-small btn-icon-only" id="addFavoriteBtn" title="Add favorite" aria-label="Add favorite">
-							+
-						</button>
-					</div>
-
-					<div class="favorites-toolbar">
-						<button class="btn btn-small" id="exportFavoritesBtn" title="Export favorites to JSON" aria-label="Export favorites">
-							Export
-						</button>
-						<button class="btn btn-small" id="importFavoritesBtn" title="Import favorites from JSON" aria-label="Import favorites">
-							Import
-						</button>
-					</div>
-
-					<div class="favorites-list" id="favoritesList">
-						<div class="empty-state" id="favoritesEmptyState">
-							<p>No favorites yet</p>
-						</div>
-					</div>
-				</section>
-			</div>
+				</div>
+			</section>
 		</main>
 	</div>
 
