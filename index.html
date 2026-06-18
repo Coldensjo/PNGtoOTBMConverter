@@ -127,6 +127,34 @@
 				</div>
 
 				<div class="settings-panel-body">
+					<div class="cleanup-section" id="cleanupSection" hidden>
+						<p class="cleanup-hint">Remove stray pixels that are outnumbered by surrounding colors in each 3×3 area.</p>
+						<div class="setting-row cleanup-aggressiveness-row">
+							<label for="cleanupAggressiveness">Aggressiveness</label>
+							<span class="cleanup-aggressiveness-value" id="cleanupAggressivenessValue">Balanced</span>
+						</div>
+						<input
+							type="range"
+							id="cleanupAggressiveness"
+							class="cleanup-aggressiveness-slider"
+							min="1"
+							max="5"
+							step="1"
+							value="3"
+							aria-valuemin="1"
+							aria-valuemax="5"
+							aria-valuenow="3"
+							aria-label="Smart cleanup aggressiveness"
+						>
+						<div class="cleanup-aggressiveness-scale" aria-hidden="true">
+							<span>Gentle</span>
+							<span>Maximum</span>
+						</div>
+						<button type="button" class="btn btn-primary cleanup-btn" id="smartCleanupBtn" aria-label="Remove lone pixels surrounded by another color">
+							Smart cleanup
+						</button>
+					</div>
+
 					<div class="simplify-section" id="simplifySection" hidden>
 						<p class="simplify-hint" id="simplifyHint"></p>
 						<div class="setting-row">

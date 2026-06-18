@@ -8,6 +8,8 @@ const RECOMMENDED_MAX_COLORS = 30;
 const HARD_MAX_COLORS = 256;
 const KMEANS_SAMPLE_SIZE = 8000;
 const KMEANS_ITERATIONS = 12;
+const CLEANUP_AGGRESSIVENESS_LABELS = ['Gentle', 'Light', 'Balanced', 'Strong', 'Maximum'];
+const DEFAULT_CLEANUP_AGGRESSIVENESS = 3;
 
 class PNGToOTBMApp {
 	constructor() {
@@ -70,6 +72,10 @@ class PNGToOTBMApp {
 		this.simplifyHint = document.getElementById('simplifyHint');
 		this.targetColorCount = document.getElementById('targetColorCount');
 		this.simplifyColorsBtn = document.getElementById('simplifyColorsBtn');
+		this.cleanupSection = document.getElementById('cleanupSection');
+		this.smartCleanupBtn = document.getElementById('smartCleanupBtn');
+		this.cleanupAggressiveness = document.getElementById('cleanupAggressiveness');
+		this.cleanupAggressivenessValue = document.getElementById('cleanupAggressivenessValue');
 		
 		// Canvas context
 		this.ctx = this.previewCanvas.getContext('2d');
@@ -78,6 +84,7 @@ class PNGToOTBMApp {
 		this._populateClientVersions();
 		this._loadSettings();
 		this._loadFavorites();
+		this._updateCleanupAggressivenessLabel();
 		this._bindEvents();
 	}
 	
@@ -161,6 +168,11 @@ class PNGToOTBMApp {
 			this._saveSettings();
 		});
 		this.simplifyColorsBtn.addEventListener('click', () => this._handleSimplifyColors());
+		this.smartCleanupBtn.addEventListener('click', () => this._handleSmartCleanup());
+		this.cleanupAggressiveness.addEventListener('input', () => {
+			this._updateCleanupAggressivenessLabel();
+			this._saveSettings();
+		});
 		this.targetColorCount.addEventListener('change', () => this._saveSettings());
 		
 		// Color search
@@ -935,6 +947,7 @@ class PNGToOTBMApp {
 			this._buildColorList();
 			this.colorCount.textContent = `${this.uniqueColorCount} colors`;
 			this._updateSimplifyPanel();
+			this._updateCleanupPanel();
 			this._updateGenerateButtonState();
 			return { success: false, tooManyColors: true };
 		}
@@ -978,6 +991,7 @@ class PNGToOTBMApp {
 		this.colorCount.textContent = countText;
 		
 		this._updateSimplifyPanel();
+		this._updateCleanupPanel();
 		this._updateGenerateButtonState();
 		
 		return { success: true };
@@ -1118,6 +1132,14 @@ class PNGToOTBMApp {
 	}
 	
 	/**
+	 * Show or hide the smart-cleanup panel when an image is loaded
+	 */
+	_updateCleanupPanel() {
+		this.cleanupSection.hidden = !this.image;
+		this.smartCleanupBtn.disabled = !this.image || !this.imageData;
+	}
+	
+	/**
 	 * Show or hide the simplify-colors panel based on unique color count
 	 */
 	_updateSimplifyPanel() {
@@ -1146,6 +1168,196 @@ class PNGToOTBMApp {
 		}
 		
 		this.simplifyColorsBtn.disabled = this.uniqueColorCount <= 2;
+	}
+	
+	/**
+	 * Remove lone opaque pixels fully surrounded by a single other color
+	 */
+	async _handleSmartCleanup() {
+		if (!this.image || !this.imageData) {
+			this._updateStatus('No image loaded', 'error');
+			return;
+		}
+		
+		this.smartCleanupBtn.disabled = true;
+		this._updateStatus('Cleaning up lone pixels…', '');
+		
+		try {
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			
+			const aggressiveness = this._getCleanupAggressiveness();
+			const { imageData: cleaned, changedCount } = this._cleanupLonePixels(this.imageData, aggressiveness);
+			if (changedCount === 0) {
+				this._updateStatus('No lone pixels found', 'success');
+				return;
+			}
+			
+			await this._applyImageDataToPreview(cleaned);
+			
+			const result = this._analyzeColors();
+			if (result?.success) {
+				this._updatePreview();
+				this._updateStatus(
+					`Smart cleanup: fixed ${changedCount.toLocaleString()} lone pixel${changedCount === 1 ? '' : 's'}`,
+					'success'
+				);
+			} else if (result?.tooManyColors) {
+				this._updateStatus(
+					`Fixed ${changedCount.toLocaleString()} lone pixel(s), but the image still has too many colors to map.`,
+					'warning'
+				);
+			}
+		} catch (error) {
+			this._updateStatus(`Smart cleanup failed: ${error.message}`, 'error');
+		} finally {
+			this.smartCleanupBtn.disabled = !this.image || !this.imageData;
+		}
+	}
+	
+	/**
+	 * Remove stray opaque pixels outnumbered by neighbors in a 3×3 window.
+	 * Repeats until stable so short chains and diagonal pairs are removed too.
+	 */
+	_cleanupLonePixels(sourceData, aggressiveness = DEFAULT_CLEANUP_AGGRESSIVENESS) {
+		const params = this._getCleanupParams(aggressiveness);
+		const { width, height, data: src } = sourceData;
+		const out = new ImageData(width, height);
+		const dst = out.data;
+		dst.set(src);
+		
+		let changedCount = 0;
+		let changed = true;
+		let iterations = 0;
+		
+		while (changed && iterations < params.maxIterations) {
+			changed = false;
+			iterations++;
+			const current = new Uint8ClampedArray(dst);
+			
+			for (let y = 0; y < height; y++) {
+				for (let x = 0; x < width; x++) {
+					const i = (y * width + x) * 4;
+					if (current[i + 3] < 128) continue;
+					
+					const replacement = this._getStrayPixelReplacement(current, width, height, x, y, params);
+					if (!replacement) continue;
+					
+					const [nr, ng, nb] = replacement;
+					if (current[i] === nr && current[i + 1] === ng && current[i + 2] === nb) continue;
+					
+					dst[i] = nr;
+					dst[i + 1] = ng;
+					dst[i + 2] = nb;
+					changed = true;
+					changedCount++;
+				}
+			}
+		}
+		
+		return { imageData: out, changedCount };
+	}
+	
+	_getCleanupAggressiveness() {
+		const value = parseInt(this.cleanupAggressiveness.value, 10);
+		if (!Number.isFinite(value)) return DEFAULT_CLEANUP_AGGRESSIVENESS;
+		return Math.max(1, Math.min(CLEANUP_AGGRESSIVENESS_LABELS.length, value));
+	}
+	
+	_getCleanupParams(aggressiveness) {
+		const presets = {
+			1: { maxClusterSize: 1, minModeRatio: 0.75, surroundSlack: 0, minModeLead: 2, maxIterations: 32, allowStrongPlurality: false },
+			2: { maxClusterSize: 1, minModeRatio: 0.625, surroundSlack: 0, minModeLead: 1, maxIterations: 48, allowStrongPlurality: false },
+			3: { maxClusterSize: 2, minModeRatio: 0.5, surroundSlack: 1, minModeLead: 1, maxIterations: 64, allowStrongPlurality: false },
+			4: { maxClusterSize: 3, minModeRatio: 0.45, surroundSlack: 2, minModeLead: 0, maxIterations: 80, allowStrongPlurality: true },
+			5: { maxClusterSize: 5, minModeRatio: 0.4, surroundSlack: 3, minModeLead: 0, maxIterations: 96, allowStrongPlurality: true }
+		};
+		
+		return presets[aggressiveness] || presets[DEFAULT_CLEANUP_AGGRESSIVENESS];
+	}
+	
+	_updateCleanupAggressivenessLabel() {
+		const level = this._getCleanupAggressiveness();
+		this.cleanupAggressivenessValue.textContent = CLEANUP_AGGRESSIVENESS_LABELS[level - 1];
+		this.cleanupAggressiveness.setAttribute('aria-valuenow', String(level));
+	}
+	
+	/**
+	 * Pick a replacement color when a pixel is a local outlier in its 3×3 area.
+	 */
+	_getStrayPixelReplacement(data, width, height, x, y, params) {
+		const centerI = (y * width + x) * 4;
+		const centerKey = this._rgbKey(data[centerI], data[centerI + 1], data[centerI + 2]);
+		const windowCounts = new Map();
+		const neighborCounts = new Map();
+		let neighborTotal = 0;
+		
+		for (let dy = -1; dy <= 1; dy++) {
+			for (let dx = -1; dx <= 1; dx++) {
+				const nx = x + dx;
+				const ny = y + dy;
+				if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+				
+				const ni = (ny * width + nx) * 4;
+				if (data[ni + 3] < 128) continue;
+				
+				const key = this._rgbKey(data[ni], data[ni + 1], data[ni + 2]);
+				windowCounts.set(key, (windowCounts.get(key) || 0) + 1);
+				
+				if (dx === 0 && dy === 0) continue;
+				
+				neighborCounts.set(key, (neighborCounts.get(key) || 0) + 1);
+				neighborTotal++;
+			}
+		}
+		
+		if (neighborTotal === 0) return null;
+		
+		let modeKey = -1;
+		let modeCount = 0;
+		let secondCount = 0;
+		for (const [key, count] of neighborCounts) {
+			if (count > modeCount) {
+				secondCount = modeCount;
+				modeCount = count;
+				modeKey = key;
+			} else if (count > secondCount) {
+				secondCount = count;
+			}
+		}
+		
+		if (modeKey === centerKey) return null;
+		if (modeCount <= secondCount) return null;
+		if (modeCount - secondCount < params.minModeLead) return null;
+		
+		const minMode = Math.max(2, Math.ceil(neighborTotal * params.minModeRatio));
+		if (modeCount < minMode) return null;
+		
+		const centerWindowCount = windowCounts.get(centerKey) || 0;
+		if (centerWindowCount > params.maxClusterSize) return null;
+		
+		const nearlySurrounded = modeCount >= neighborTotal - params.surroundSlack;
+		
+		if (centerWindowCount === 1) {
+			return this._unpackRgbKey(modeKey);
+		}
+		
+		if (nearlySurrounded) {
+			return this._unpackRgbKey(modeKey);
+		}
+		
+		if (params.allowStrongPlurality && centerWindowCount <= 3 && modeCount >= secondCount + 2) {
+			return this._unpackRgbKey(modeKey);
+		}
+		
+		return null;
+	}
+	
+	_rgbKey(r, g, b) {
+		return (r << 16) | (g << 8) | b;
+	}
+	
+	_unpackRgbKey(key) {
+		return [(key >> 16) & 255, (key >> 8) & 255, key & 255];
 	}
 	
 	/**
@@ -1594,6 +1806,10 @@ class PNGToOTBMApp {
 						this.mapRotation.value = String(rotation);
 					}
 				}
+				if (parsed.cleanupAggressiveness !== undefined) {
+					const level = Math.max(1, Math.min(CLEANUP_AGGRESSIVENESS_LABELS.length, parseInt(parsed.cleanupAggressiveness, 10) || DEFAULT_CLEANUP_AGGRESSIVENESS));
+					this.cleanupAggressiveness.value = String(level);
+				}
 			}
 		} catch (error) {
 			console.warn('Failed to load settings:', error);
@@ -1615,7 +1831,8 @@ class PNGToOTBMApp {
 				mapScale: this._getMapScale(),
 				flipHorizontal: this.flipHorizontal.checked,
 				flipVertical: this.flipVertical.checked,
-				mapRotation: this._getMapRotation()
+				mapRotation: this._getMapRotation(),
+				cleanupAggressiveness: this._getCleanupAggressiveness()
 			};
 			localStorage.setItem('pngToOtbmSettings', JSON.stringify(settings));
 		} catch (error) {

@@ -692,6 +692,51 @@ input[type="number"].color-id-input {
 	font-size: 11px;
 }
 
+/* Smart cleanup */
+.cleanup-section {
+	padding: 14px 16px;
+	border-bottom: 1px solid var(--border-color);
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	background: rgba(91, 154, 193, 0.08);
+}
+
+.cleanup-hint {
+	font-size: 12px;
+	line-height: 1.45;
+	color: var(--text-secondary);
+}
+
+.cleanup-btn {
+	width: 100%;
+}
+
+.cleanup-aggressiveness-row {
+	margin-top: 2px;
+}
+
+.cleanup-aggressiveness-value {
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--accent);
+}
+
+.cleanup-aggressiveness-slider {
+	width: 100%;
+	margin: 0;
+	accent-color: var(--accent);
+	cursor: pointer;
+}
+
+.cleanup-aggressiveness-scale {
+	display: flex;
+	justify-content: space-between;
+	font-size: 10px;
+	color: var(--text-muted);
+	margin-top: -4px;
+}
+
 /* Simplify colors */
 .simplify-section {
 	padding: 14px 16px;
