@@ -64,8 +64,7 @@ body {
 	display: flex;
 	flex-direction: column;
 	height: 100vh;
-	max-width: 1680px;
-	margin: 0 auto;
+	width: 100%;
 	padding: 20px;
 	overflow: hidden;
 }
@@ -209,8 +208,6 @@ body {
 .preview-container {
 	flex: 1;
 	display: flex;
-	align-items: center;
-	justify-content: center;
 	background: var(--bg-secondary);
 	margin: 12px;
 	border-radius: var(--radius-md);
@@ -241,6 +238,7 @@ body {
 .preview-placeholder {
 	text-align: center;
 	color: var(--text-muted);
+	margin: auto;
 }
 
 .placeholder-icon {
@@ -291,25 +289,14 @@ body {
 #previewCanvas.visible {
 	display: block;
 	cursor: crosshair;
+	margin: auto;
+	flex-shrink: 0;
 }
 
-/* Pixel Info Tooltip */
-.pixel-info {
-	position: absolute;
-	background: var(--bg-primary);
-	border: 1px solid var(--border-color);
-	border-radius: var(--radius-sm);
-	padding: 8px 12px;
-	font-size: 11px;
-	font-family: var(--font-mono);
-	color: var(--text-primary);
-	pointer-events: none;
-	z-index: 1000;
-	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.24);
-	display: none;
-	white-space: nowrap;
-	line-height: 1.6;
-	min-width: 120px;
+.preview-container.panning,
+.preview-container.panning #previewCanvas.visible {
+	cursor: grabbing;
+	user-select: none;
 }
 
 .import-section {
@@ -792,6 +779,69 @@ input[type="number"].color-id-input {
 	margin-top: 2px;
 }
 
+.settings-panel .tool-panel #replaceFromColor {
+	width: 100%;
+	max-width: none;
+	font-family: var(--font-mono);
+	font-size: 12px;
+}
+
+.replace-swatch {
+	width: 18px;
+	height: 18px;
+	border: 1px solid var(--border-color);
+	border-radius: 3px;
+	flex-shrink: 0;
+}
+
+.replace-swatch.is-empty {
+	background: repeating-linear-gradient(
+		45deg,
+		transparent,
+		transparent 4px,
+		var(--border-color) 4px,
+		var(--border-color) 5px
+	);
+}
+
+.replace-to-control,
+.replace-row-controls {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.replace-pipette {
+	padding: 4px 7px;
+	line-height: 0;
+}
+
+.replace-pipette.is-active {
+	border-color: var(--accent);
+	color: var(--accent);
+	background: var(--bg-secondary);
+}
+
+.preview-container.pipette-active,
+.preview-container.pipette-active canvas {
+	cursor: crosshair;
+}
+
+.replace-color-input {
+	width: 32px;
+	height: 26px;
+	padding: 2px;
+	border: 1px solid var(--border-color);
+	border-radius: 3px;
+	background: none;
+	cursor: pointer;
+}
+
+.replace-hex-input {
+	width: 82px;
+	font-family: var(--font-mono);
+}
+
 /* Settings Section */
 .settings-section {
 	padding: 10px 16px;
@@ -915,6 +965,7 @@ input[type="number"].color-id-input {
 	color: var(--text-secondary);
 	cursor: pointer;
 	user-select: none;
+	white-space: nowrap;
 }
 
 .generate-option-label input {

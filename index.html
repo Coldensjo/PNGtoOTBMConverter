@@ -107,6 +107,9 @@
 							Fit
 						</button>
 					</div>
+					<button type="button" class="btn btn-small" id="downloadImageBtn" title="Download the current image as a PNG" aria-label="Download current image as PNG" hidden disabled>
+						Download PNG
+					</button>
 					<button type="button" class="btn btn-small" id="resetImageBtn" title="Restore the image to its original upload state" aria-label="Reset image to original upload" hidden disabled>
 						Reset
 					</button>
@@ -119,7 +122,6 @@
 						<p class="placeholder-sub">or browse from your computer</p>
 					</div>
 					<canvas id="previewCanvas"></canvas>
-					<div class="pixel-info" id="pixelInfo"></div>
 				</div>
 
 				<div class="import-section">
@@ -182,6 +184,8 @@
 						<div class="tools-tabs" role="tablist" aria-label="Image tools">
 							<button type="button" class="tools-tab is-active" id="cleanupTab" data-tool="cleanup" role="tab" aria-selected="true">Cleanup</button>
 							<button type="button" class="tools-tab" id="refineTab" data-tool="refine" role="tab" aria-selected="false">Refine</button>
+							<button type="button" class="tools-tab" id="resizeTab" data-tool="resize" role="tab" aria-selected="false">Resize</button>
+							<button type="button" class="tools-tab" id="replaceTab" data-tool="replace" role="tab" aria-selected="false">Replace</button>
 						</div>
 
 						<div class="tool-panel" id="cleanupSection" data-tool="cleanup" role="tabpanel">
@@ -263,6 +267,53 @@
 							>
 							<button type="button" class="btn btn-primary tool-btn" id="refineEdgesBtn" aria-label="Straighten jagged edges in the image">
 								Refine edges
+							</button>
+						</div>
+
+						<div class="tool-panel" id="resizeSection" data-tool="resize" role="tabpanel" hidden>
+							<p class="tool-hint">Resample the image itself. Nearest-neighbor keeps the existing colors intact.</p>
+							<div class="setting-row">
+								<label for="resizeWidth">Width</label>
+								<input type="number" id="resizeWidth" class="input-small" min="1" step="1" aria-label="New image width in pixels">
+							</div>
+							<div class="setting-row">
+								<label for="resizeHeight">Height</label>
+								<input type="number" id="resizeHeight" class="input-small" min="1" step="1" aria-label="New image height in pixels">
+							</div>
+							<label class="generate-option-label" for="resizeKeepAspect">
+								<input type="checkbox" id="resizeKeepAspect" checked aria-label="Keep aspect ratio when resizing">
+								Keep aspect ratio
+							</label>
+							<p class="tool-hint" id="resizeHint"></p>
+							<button type="button" class="btn btn-primary tool-btn" id="resizeApplyBtn" aria-label="Resize the image to the chosen dimensions">
+								Resize image
+							</button>
+						</div>
+
+						<div class="tool-panel" id="replaceSection" data-tool="replace" role="tabpanel" hidden>
+							<p class="tool-hint">Replace every pixel of one color with another.</p>
+							<div class="setting-row">
+								<label for="replaceFromColor">From</label>
+								<div class="replace-row-controls">
+									<button type="button" class="btn btn-small replace-pipette" id="replaceFromPipetteBtn" title="Pick source color from the image" aria-label="Pick source color from the image" aria-pressed="false">
+										<svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor" aria-hidden="true"><path d="M13.7 2.3a2 2 0 0 0-2.83 0l-1.44 1.44-.72-.71L7.3 4.44l.71.72-5.3 5.3a1 1 0 0 0-.27.5l-.42 2.1a.5.5 0 0 0 .59.58l2.1-.42a1 1 0 0 0 .5-.27l5.3-5.3.72.71 1.41-1.41-.71-.72 1.44-1.44a2 2 0 0 0 0-2.83l-.67-.66zM4.5 12.09l-1.06.21.21-1.06 5.07-5.06.85.85-5.07 5.06z"/></svg>
+									</button>
+									<span class="replace-swatch" id="replaceFromSwatch" aria-hidden="true"></span>
+								</div>
+							</div>
+							<select id="replaceFromColor" class="input-select" aria-label="Color to replace"></select>
+							<div class="setting-row">
+								<label for="replaceToColor">To</label>
+								<div class="replace-to-control">
+									<button type="button" class="btn btn-small replace-pipette" id="replaceToPipetteBtn" title="Pick replacement color from the image" aria-label="Pick replacement color from the image" aria-pressed="false">
+										<svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor" aria-hidden="true"><path d="M13.7 2.3a2 2 0 0 0-2.83 0l-1.44 1.44-.72-.71L7.3 4.44l.71.72-5.3 5.3a1 1 0 0 0-.27.5l-.42 2.1a.5.5 0 0 0 .59.58l2.1-.42a1 1 0 0 0 .5-.27l5.3-5.3.72.71 1.41-1.41-.71-.72 1.44-1.44a2 2 0 0 0 0-2.83l-.67-.66zM4.5 12.09l-1.06.21.21-1.06 5.07-5.06.85.85-5.07 5.06z"/></svg>
+									</button>
+									<input type="color" id="replaceToColor" value="#000000" class="replace-color-input" aria-label="Replacement color picker">
+									<input type="text" id="replaceToHex" value="#000000" class="input-small replace-hex-input" maxlength="7" spellcheck="false" autocomplete="off" aria-label="Replacement color hex value">
+								</div>
+							</div>
+							<button type="button" class="btn btn-primary tool-btn" id="replaceColorBtn" aria-label="Replace all pixels of the selected color with the chosen color">
+								Replace color
 							</button>
 						</div>
 					</div>

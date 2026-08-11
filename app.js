@@ -32,6 +32,7 @@ class PNGToOTBMApp {
 		this.favorites = []; // Array of { id, name } favorite items
 		this.originalImageData = null; // Snapshot of image at upload/import
 		this.imageIsModified = false; // True after simplify/cleanup/refine edits
+		this.sourceFileName = null; // Name of the loaded PNG/OTBM-derived image
 		
 		// DOM Elements
 		this.fileInput = document.getElementById('fileInput');
@@ -68,7 +69,6 @@ class PNGToOTBMApp {
 		this.zoomLevelDisplay = document.getElementById('zoomLevel');
 		this.mapScale = document.getElementById('mapScale');
 		this.mapScaleHint = document.getElementById('mapScaleHint');
-		this.pixelInfo = document.getElementById('pixelInfo');
 		this.addFavoriteBtn = document.getElementById('addFavoriteBtn');
 		this.exportFavoritesBtn = document.getElementById('exportFavoritesBtn');
 		this.importFavoritesBtn = document.getElementById('importFavoritesBtn');
@@ -87,7 +87,21 @@ class PNGToOTBMApp {
 		this.refineRangeValue = document.getElementById('refineRangeValue');
 		this.refinePasses = document.getElementById('refinePasses');
 		this.refinePassesValue = document.getElementById('refinePassesValue');
+		this.resizeWidth = document.getElementById('resizeWidth');
+		this.resizeHeight = document.getElementById('resizeHeight');
+		this.resizeKeepAspect = document.getElementById('resizeKeepAspect');
+		this.resizeHint = document.getElementById('resizeHint');
+		this.resizeApplyBtn = document.getElementById('resizeApplyBtn');
+		this.replaceFromColor = document.getElementById('replaceFromColor');
+		this.replaceFromSwatch = document.getElementById('replaceFromSwatch');
+		this.replaceToColor = document.getElementById('replaceToColor');
+		this.replaceToHex = document.getElementById('replaceToHex');
+		this.replaceColorBtn = document.getElementById('replaceColorBtn');
+		this.replaceFromPipetteBtn = document.getElementById('replaceFromPipetteBtn');
+		this.replaceToPipetteBtn = document.getElementById('replaceToPipetteBtn');
+		this.pipetteTarget = null; // 'from' | 'to' | null — active eyedropper
 		this.resetImageBtn = document.getElementById('resetImageBtn');
+		this.downloadImageBtn = document.getElementById('downloadImageBtn');
 		this.toolsSection = document.getElementById('toolsSection');
 		this.simplifySection = document.getElementById('simplifySection');
 		this.toolTabs = Array.from(document.querySelectorAll('.tools-tab'));
@@ -207,7 +221,31 @@ class PNGToOTBMApp {
 			this._updateRefineSliderLabels();
 			this._saveSettings();
 		});
+		this.resizeWidth.addEventListener('input', () => this._onResizeInputChange('width'));
+		this.resizeHeight.addEventListener('input', () => this._onResizeInputChange('height'));
+		this.resizeKeepAspect.addEventListener('change', () => this._onResizeInputChange('width'));
+		this.resizeApplyBtn.addEventListener('click', () => this._handleResizeImage());
+		this.replaceFromColor.addEventListener('change', () => this._updateReplaceSwatch());
+		this.replaceToColor.addEventListener('input', () => {
+			this.replaceToHex.value = this.replaceToColor.value;
+		});
+		this.replaceToHex.addEventListener('change', () => {
+			const hex = this._normalizeHexInput(this.replaceToHex.value);
+			if (hex) {
+				this.replaceToColor.value = hex;
+			}
+			this.replaceToHex.value = hex || this.replaceToColor.value;
+		});
+		this.replaceColorBtn.addEventListener('click', () => this._handleReplaceColor());
+		this.replaceFromPipetteBtn.addEventListener('click', () => this._togglePipette('from'));
+		this.replaceToPipetteBtn.addEventListener('click', () => this._togglePipette('to'));
+		window.addEventListener('keydown', (e) => {
+			if (e.key === 'Escape' && this.pipetteTarget) {
+				this._setPipette(null);
+			}
+		});
 		this.resetImageBtn.addEventListener('click', () => this._handleResetImage());
+		this.downloadImageBtn.addEventListener('click', () => this._handleDownloadImage());
 		this.targetColorCount.addEventListener('change', () => this._saveSettings());
 		
 		// Color search
@@ -257,14 +295,38 @@ class PNGToOTBMApp {
 			}
 		}, { passive: false });
 		
-		// Pixel hover detection
-		this.previewCanvas.addEventListener('mousemove', (e) => this._handlePixelHover(e));
-		this.previewCanvas.addEventListener('mouseleave', () => {
-			this.pixelInfo.style.display = 'none';
-		});
-		
 		// Pixel click to highlight in color list
 		this.previewCanvas.addEventListener('click', (e) => this._handlePixelClick(e));
+
+		// Left-drag to pan the preview (a plain click still selects a pixel)
+		this._isPanning = false;
+		this._didPan = false;
+		this.previewContainer.addEventListener('mousedown', (e) => {
+			if (e.button !== 0 || !this.image) return;
+			this._isPanning = true;
+			this._didPan = false;
+			this._panStart = {
+				x: e.clientX,
+				y: e.clientY,
+				scrollLeft: this.previewContainer.scrollLeft,
+				scrollTop: this.previewContainer.scrollTop
+			};
+		});
+		window.addEventListener('mousemove', (e) => {
+			if (!this._isPanning) return;
+			const dx = e.clientX - this._panStart.x;
+			const dy = e.clientY - this._panStart.y;
+			// Only treat as a pan after a few pixels of movement, so clicks still work
+			if (!this._didPan && Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
+			this._didPan = true;
+			this.previewContainer.classList.add('panning');
+			this.previewContainer.scrollLeft = this._panStart.scrollLeft - dx;
+			this.previewContainer.scrollTop = this._panStart.scrollTop - dy;
+		});
+		window.addEventListener('mouseup', () => {
+			this._isPanning = false;
+			this.previewContainer.classList.remove('panning');
+		});
 		
 		// Window resize
 		window.addEventListener('resize', () => {
@@ -288,6 +350,7 @@ class PNGToOTBMApp {
 	 * Load an image file
 	 */
 	_loadImage(file) {
+		this.sourceFileName = file.name;
 		const reader = new FileReader();
 		
 		reader.onload = (e) => {
@@ -368,6 +431,7 @@ class PNGToOTBMApp {
 
 				// Download the PNG
 				const baseName = file.name.replace(/\.otbm$/i, '') || 'map';
+				this.sourceFileName = `${baseName}.png`;
 				canvas.toBlob((blob) => {
 					if (!blob) {
 						this._updateStatus('Failed to encode PNG', 'error');
@@ -762,99 +826,11 @@ class PNGToOTBMApp {
 	}
 	
 	/**
-	 * Handle pixel hover to show color and ID info
-	 */
-	_handlePixelHover(e) {
-		if (!this.image || !this.imageData) {
-			this.pixelInfo.style.display = 'none';
-			return;
-		}
-		
-		const rect = this.previewCanvas.getBoundingClientRect();
-		const x = e.clientX - rect.left;
-		const y = e.clientY - rect.top;
-		
-		// Convert canvas coordinates to image coordinates
-		// Safety check: ensure zoomLevel is valid
-		if (!this.zoomLevel || this.zoomLevel <= 0 || isNaN(this.zoomLevel)) {
-			this.zoomLevel = 1.0; // Reset to default
-		}
-		const imageX = Math.floor(x / this.zoomLevel);
-		const imageY = Math.floor(y / this.zoomLevel);
-		
-		// Check bounds
-		if (imageX < 0 || imageX >= this.image.width || imageY < 0 || imageY >= this.image.height) {
-			this.pixelInfo.style.display = 'none';
-			return;
-		}
-		
-		// Get pixel data
-		const pixels = this.imageData.data;
-		const i = (imageY * this.image.width + imageX) * 4;
-		const r = pixels[i];
-		const g = pixels[i + 1];
-		const b = pixels[i + 2];
-		const a = pixels[i + 3];
-		
-		// Build info text
-		let infoText = '';
-		
-		if (a < 128) {
-			// Transparent pixel
-			const transparentId = Math.max(0, Math.min(65535, parseInt(this.transparentTileId.value) || 0));
-			infoText = `Transparent`;
-			if (transparentId > 0) {
-				infoText += `<br>ID: ${transparentId}`;
-			} else {
-				infoText += `<br>ID: 0 (skipped)`;
-			}
-		} else {
-			// Opaque pixel
-			const hex = this._rgbToHex(r, g, b);
-			const mapping = this.colorMappings.get(hex);
-			
-			infoText = `RGB(${r}, ${g}, ${b})<br>Hex: ${hex.toUpperCase()}`;
-			
-			if (mapping) {
-				if (mapping.tileId > 0) {
-					infoText += `<br>ID: ${mapping.tileId}`;
-				} else {
-					infoText += `<br>ID: 0 (not assigned)`;
-				}
-				infoText += `<br><small style="opacity: 0.7;">Click to highlight</small>`;
-			}
-		}
-		
-		// Position and show tooltip relative to canvas
-		this.pixelInfo.innerHTML = infoText;
-		this.pixelInfo.style.display = 'block';
-		
-		// Position relative to canvas container
-		const containerRect = this.previewContainer.getBoundingClientRect();
-		let tooltipX = e.clientX - containerRect.left + 15;
-		let tooltipY = e.clientY - containerRect.top + 15;
-		
-		// Get tooltip dimensions (need to measure after display)
-		const tooltipWidth = this.pixelInfo.offsetWidth || 150;
-		const tooltipHeight = this.pixelInfo.offsetHeight || 60;
-		
-		// Adjust if tooltip goes off screen
-		if (tooltipX + tooltipWidth > containerRect.width) {
-			tooltipX = e.clientX - containerRect.left - tooltipWidth - 15;
-		}
-		if (tooltipY + tooltipHeight > containerRect.height) {
-			tooltipY = e.clientY - containerRect.top - tooltipHeight - 15;
-		}
-		
-		this.pixelInfo.style.left = `${tooltipX}px`;
-		this.pixelInfo.style.top = `${tooltipY}px`;
-	}
-	
-	/**
 	 * Handle pixel click to highlight color in mappings list
 	 */
 	_handlePixelClick(e) {
 		if (!this.image || !this.imageData) return;
+		if (this._didPan) return;
 		
 		const rect = this.previewCanvas.getBoundingClientRect();
 		const x = e.clientX - rect.left;
@@ -883,13 +859,23 @@ class PNGToOTBMApp {
 		
 		// Skip transparent pixels (can't highlight them in color list)
 		if (a < 128) {
-			this._updateStatus('Transparent pixels cannot be highlighted in color mappings', '');
+			if (this.pipetteTarget) {
+				this._updateStatus('That pixel is transparent — pick an opaque one', '');
+			} else {
+				this._updateStatus('Transparent pixels cannot be highlighted in color mappings', '');
+			}
 			return;
 		}
-		
+
 		// Get hex color
 		const hex = this._rgbToHex(r, g, b);
-		
+
+		// Eyedropper mode: send the color to the Replace panel instead of highlighting
+		if (this.pipetteTarget) {
+			this._applyPipettePick(hex);
+			return;
+		}
+
 		// Find and highlight the color row
 		this._highlightColorInList(hex);
 	}
@@ -986,6 +972,8 @@ class PNGToOTBMApp {
 			this._updateSimplifyPanel();
 			this._updateCleanupPanel();
 			this._updateRefinePanel();
+			this._updateResizePanel();
+			this._updateReplacePanel();
 			this._updateGenerateButtonState();
 			return { success: false, tooManyColors: true };
 		}
@@ -1031,8 +1019,10 @@ class PNGToOTBMApp {
 		this._updateSimplifyPanel();
 		this._updateCleanupPanel();
 		this._updateRefinePanel();
+		this._updateResizePanel();
+		this._updateReplacePanel();
 		this._updateGenerateButtonState();
-		
+
 		return { success: true };
 	}
 	
@@ -1087,12 +1077,12 @@ class PNGToOTBMApp {
 		rgb.className = 'color-rgb';
 		rgb.textContent = `RGB(${mapping.rgb.r}, ${mapping.rgb.g}, ${mapping.rgb.b})`;
 		
-		const pixels = document.createElement('div');
-		pixels.className = 'color-pixels';
-		pixels.textContent = `${mapping.count.toLocaleString()} pixels`;
-		
+		const hexLabel = document.createElement('div');
+		hexLabel.className = 'color-pixels';
+		hexLabel.textContent = hex.toUpperCase();
+
 		info.appendChild(rgb);
-		info.appendChild(pixels);
+		info.appendChild(hexLabel);
 		
 		// ID input
 		const input = document.createElement('input');
@@ -1183,6 +1173,9 @@ class PNGToOTBMApp {
 		this.toolPanels.forEach(panel => {
 			panel.hidden = panel.dataset.tool !== tool;
 		});
+		if (tool !== 'replace' && this.pipetteTarget) {
+			this._setPipette(null);
+		}
 	}
 
 	/**
@@ -1198,6 +1191,330 @@ class PNGToOTBMApp {
 	 */
 	_updateRefinePanel() {
 		this.refineEdgesBtn.disabled = !this.image || !this.imageData;
+	}
+
+	/**
+	 * Sync the resize inputs with the current image dimensions
+	 */
+	_updateResizePanel() {
+		const hasImage = !!(this.image && this.imageData);
+		this.resizeApplyBtn.disabled = !hasImage;
+		if (!hasImage) {
+			this.resizeWidth.value = '';
+			this.resizeHeight.value = '';
+			this.resizeHint.textContent = '';
+			return;
+		}
+		this.resizeWidth.value = String(this.image.width);
+		this.resizeHeight.value = String(this.image.height);
+		this._updateResizeHint();
+	}
+
+	/**
+	 * Keep width/height in sync when aspect ratio is locked
+	 */
+	_onResizeInputChange(changed) {
+		if (!this.image) return;
+
+		if (this.resizeKeepAspect.checked) {
+			const ratio = this.image.height / this.image.width;
+			if (changed === 'width') {
+				const w = parseInt(this.resizeWidth.value, 10);
+				if (Number.isFinite(w) && w > 0) {
+					this.resizeHeight.value = String(Math.max(1, Math.round(w * ratio)));
+				}
+			} else {
+				const h = parseInt(this.resizeHeight.value, 10);
+				if (Number.isFinite(h) && h > 0) {
+					this.resizeWidth.value = String(Math.max(1, Math.round(h / ratio)));
+				}
+			}
+		}
+		this._updateResizeHint();
+	}
+
+	_getResizeTarget() {
+		const w = parseInt(this.resizeWidth.value, 10);
+		const h = parseInt(this.resizeHeight.value, 10);
+		if (!Number.isFinite(w) || !Number.isFinite(h) || w < 1 || h < 1) return null;
+		return { width: Math.min(w, 20000), height: Math.min(h, 20000) };
+	}
+
+	_updateResizeHint() {
+		if (!this.image) return;
+		const target = this._getResizeTarget();
+		if (!target) {
+			this.resizeHint.textContent = 'Enter a valid size (at least 1×1).';
+			return;
+		}
+		if (target.width === this.image.width && target.height === this.image.height) {
+			this.resizeHint.textContent = `Current size: ${this.image.width}×${this.image.height}`;
+			return;
+		}
+		const pct = Math.round((target.width / this.image.width) * 100);
+		this.resizeHint.textContent = `${this.image.width}×${this.image.height} → ${target.width}×${target.height} (${pct}%)`;
+	}
+
+	/**
+	 * Resample the working image to the chosen dimensions (nearest-neighbor,
+	 * so no new colors are introduced)
+	 */
+	async _handleResizeImage() {
+		if (!this.image || !this.imageData) {
+			this._updateStatus('No image loaded', 'error');
+			return;
+		}
+
+		const target = this._getResizeTarget();
+		if (!target) {
+			this._updateStatus('Enter a valid width and height first', 'error');
+			return;
+		}
+		if (target.width === this.image.width && target.height === this.image.height) {
+			this._updateStatus('Image is already that size', '');
+			return;
+		}
+
+		this.resizeApplyBtn.disabled = true;
+		this._updateStatus(`Resizing to ${target.width}×${target.height}…`, '');
+
+		try {
+			await new Promise((resolve) => setTimeout(resolve, 0));
+
+			const canvas = document.createElement('canvas');
+			canvas.width = target.width;
+			canvas.height = target.height;
+			const ctx = canvas.getContext('2d');
+			ctx.imageSmoothingEnabled = false;
+			ctx.drawImage(this.image, 0, 0, target.width, target.height);
+			const resized = ctx.getImageData(0, 0, target.width, target.height);
+
+			await this._applyImageDataToPreview(resized);
+
+			const result = this._analyzeColors();
+			this._updatePreview();
+			this._updateResizePanel();
+			if (result?.success) {
+				this._updateStatus(`Image resized to ${target.width}×${target.height}`, 'success');
+			} else if (result?.tooManyColors) {
+				this._updateStatus(
+					`Image resized to ${target.width}×${target.height}, but it still has too many colors to map.`,
+					'warning'
+				);
+			}
+		} catch (error) {
+			this._updateStatus(`Resize failed: ${error.message}`, 'error');
+		} finally {
+			this.resizeApplyBtn.disabled = !this.image || !this.imageData;
+		}
+	}
+
+	/**
+	 * Rebuild the replace-color dropdown from the detected image colors
+	 */
+	_updateReplacePanel() {
+		const hasColors = !!(this.image && this.imageData) && this.colorMappings.size > 0;
+		const previous = this.replaceFromColor.value;
+
+		this.replaceFromColor.innerHTML = '';
+
+		if (!hasColors) {
+			const option = document.createElement('option');
+			option.value = '';
+			option.textContent = 'No colors detected';
+			this.replaceFromColor.appendChild(option);
+			this.replaceFromColor.disabled = true;
+			this.replaceColorBtn.disabled = true;
+			this._updateReplaceSwatch();
+			return;
+		}
+
+		for (const hex of this.colorMappings.keys()) {
+			const option = document.createElement('option');
+			option.value = hex;
+			option.textContent = hex;
+			option.style.backgroundColor = hex;
+			option.style.color = this._getContrastTextColor(hex);
+			this.replaceFromColor.appendChild(option);
+		}
+
+		if (previous && this.colorMappings.has(previous)) {
+			this.replaceFromColor.value = previous;
+		}
+		this.replaceFromColor.disabled = false;
+		this.replaceColorBtn.disabled = false;
+		this._updateReplaceSwatch();
+	}
+
+	/**
+	 * Keep the source-color swatch in sync with the dropdown selection
+	 */
+	_updateReplaceSwatch() {
+		const hex = this.replaceFromColor.value;
+		if (hex && this.colorMappings.has(hex)) {
+			this.replaceFromSwatch.style.backgroundColor = hex;
+			this.replaceFromSwatch.classList.remove('is-empty');
+			this.replaceFromColor.style.backgroundColor = hex;
+			this.replaceFromColor.style.color = this._getContrastTextColor(hex);
+		} else {
+			this.replaceFromSwatch.style.backgroundColor = 'transparent';
+			this.replaceFromSwatch.classList.add('is-empty');
+			this.replaceFromColor.style.backgroundColor = '';
+			this.replaceFromColor.style.color = '';
+		}
+	}
+
+	/**
+	 * Toggle the eyedropper for the given replace field ('from' or 'to')
+	 */
+	_togglePipette(target) {
+		this._setPipette(this.pipetteTarget === target ? null : target);
+	}
+
+	/**
+	 * Activate or deactivate the eyedropper and sync button/cursor state
+	 */
+	_setPipette(target) {
+		this.pipetteTarget = target;
+		this.replaceFromPipetteBtn.classList.toggle('is-active', target === 'from');
+		this.replaceFromPipetteBtn.setAttribute('aria-pressed', target === 'from' ? 'true' : 'false');
+		this.replaceToPipetteBtn.classList.toggle('is-active', target === 'to');
+		this.replaceToPipetteBtn.setAttribute('aria-pressed', target === 'to' ? 'true' : 'false');
+		this.previewContainer.classList.toggle('pipette-active', !!target);
+
+		if (target === 'from') {
+			this._updateStatus('Pipette: click a pixel in the preview to pick the color to replace (Esc to cancel)', '');
+		} else if (target === 'to') {
+			this._updateStatus('Pipette: click a pixel in the preview to pick the replacement color (Esc to cancel)', '');
+		}
+	}
+
+	/**
+	 * Route an eyedropper pick from the preview into the Replace panel
+	 */
+	_applyPipettePick(hex) {
+		const target = this.pipetteTarget;
+		this._setPipette(null);
+
+		if (target === 'from') {
+			if (!this.colorMappings.has(hex)) {
+				this._updateStatus(`Picked ${hex}, but it is not in the color list`, 'error');
+				return;
+			}
+			this.replaceFromColor.value = hex;
+			this._updateReplaceSwatch();
+			this._updateStatus(`Source color set to ${hex}`, 'success');
+		} else if (target === 'to') {
+			this.replaceToColor.value = hex;
+			this.replaceToHex.value = hex;
+			this._updateStatus(`Replacement color set to ${hex}`, 'success');
+		}
+	}
+
+	/**
+	 * Black or white text, whichever is readable on the given background color
+	 */
+	_getContrastTextColor(hex) {
+		const { r, g, b } = this._hexToRgb(hex);
+		const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+		return luminance > 145 ? '#000000' : '#ffffff';
+	}
+
+	/**
+	 * Normalize a user-typed hex color to #rrggbb, or null if invalid
+	 */
+	_normalizeHexInput(value) {
+		const raw = String(value || '').trim().replace(/^#/, '');
+		if (/^[a-f\d]{6}$/i.test(raw)) {
+			return `#${raw.toLowerCase()}`;
+		}
+		if (/^[a-f\d]{3}$/i.test(raw)) {
+			return `#${raw.toLowerCase().split('').map(c => c + c).join('')}`;
+		}
+		return null;
+	}
+
+	/**
+	 * Replace every pixel of the selected color with the chosen replacement color
+	 */
+	async _handleReplaceColor() {
+		if (!this.image || !this.imageData) {
+			this._updateStatus('No image loaded', 'error');
+			return;
+		}
+
+		const fromHex = this.replaceFromColor.value;
+		if (!fromHex || !this.colorMappings.has(fromHex)) {
+			this._updateStatus('Select a color to replace first', 'error');
+			return;
+		}
+
+		const toHex = this._normalizeHexInput(this.replaceToColor.value);
+		if (!toHex) {
+			this._updateStatus('Pick a valid replacement color', 'error');
+			return;
+		}
+		if (toHex === fromHex) {
+			this._updateStatus('Source and replacement colors are the same', '');
+			return;
+		}
+
+		this.replaceColorBtn.disabled = true;
+		this._updateStatus(`Replacing ${fromHex} with ${toHex}…`, '');
+
+		try {
+			await new Promise((resolve) => setTimeout(resolve, 0));
+
+			const { imageData: replaced, changedCount } = this._replaceColor(this.imageData, fromHex, toHex);
+			if (changedCount === 0) {
+				this._updateStatus('No pixels matched that color', '');
+				return;
+			}
+
+			await this._applyImageDataToPreview(replaced);
+
+			const result = this._analyzeColors();
+			if (result?.success) {
+				this._updatePreview();
+				this._updateStatus(
+					`Replaced ${fromHex} with ${toHex} (${changedCount.toLocaleString()} pixel${changedCount === 1 ? '' : 's'})`,
+					'success'
+				);
+			} else if (result?.tooManyColors) {
+				this._updateStatus(
+					`Replaced ${changedCount.toLocaleString()} pixel(s), but the image still has too many colors to map.`,
+					'warning'
+				);
+			}
+		} catch (error) {
+			this._updateStatus(`Color replacement failed: ${error.message}`, 'error');
+		} finally {
+			this.replaceColorBtn.disabled = !this.image || !this.imageData || this.colorMappings.size === 0;
+		}
+	}
+
+	/**
+	 * Swap every exact-match opaque pixel of one color for another
+	 */
+	_replaceColor(sourceData, fromHex, toHex) {
+		const from = this._hexToRgb(fromHex);
+		const to = this._hexToRgb(toHex);
+		const { width, height, data: src } = sourceData;
+		const out = new ImageData(width, height);
+		const dst = out.data;
+		dst.set(src);
+
+		let changedCount = 0;
+		for (let i = 0; i < dst.length; i += 4) {
+			if (dst[i + 3] < 128) continue;
+			if (dst[i] !== from.r || dst[i + 1] !== from.g || dst[i + 2] !== from.b) continue;
+			dst[i] = to.r;
+			dst[i + 1] = to.g;
+			dst[i + 2] = to.b;
+			changedCount++;
+		}
+
+		return { imageData: out, changedCount };
 	}
 
 	/**
@@ -2010,6 +2327,48 @@ class PNGToOTBMApp {
 		const hasImage = !!this.image;
 		this.resetImageBtn.hidden = !hasImage;
 		this.resetImageBtn.disabled = !hasImage || !this.imageIsModified || !this.originalImageData;
+		if (this.downloadImageBtn) {
+			this.downloadImageBtn.hidden = !hasImage;
+			this.downloadImageBtn.disabled = !hasImage;
+		}
+	}
+
+	/**
+	 * Download the current working image (including simplify/cleanup/refine
+	 * edits) as a PNG at its native resolution.
+	 */
+	_handleDownloadImage() {
+		if (!this.image) return;
+
+		const canvas = document.createElement('canvas');
+		if (this.imageData) {
+			canvas.width = this.imageData.width;
+			canvas.height = this.imageData.height;
+			canvas.getContext('2d').putImageData(this.imageData, 0, 0);
+		} else {
+			canvas.width = this.image.width;
+			canvas.height = this.image.height;
+			canvas.getContext('2d').drawImage(this.image, 0, 0);
+		}
+
+		const baseName = (this.sourceFileName || 'image').replace(/\.[^.]+$/, '') || 'image';
+		const fileName = this.imageIsModified ? `${baseName}-edited.png` : `${baseName}.png`;
+
+		canvas.toBlob((blob) => {
+			if (!blob) {
+				this._updateStatus('Failed to encode PNG', 'error');
+				return;
+			}
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url;
+			a.download = fileName;
+			document.body.appendChild(a);
+			a.click();
+			document.body.removeChild(a);
+			URL.revokeObjectURL(url);
+			this._updateStatus(`Downloaded ${fileName}`, 'success');
+		}, 'image/png');
 	}
 	
 	/**
